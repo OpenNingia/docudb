@@ -1,8 +1,9 @@
 #include "docudb.hpp"
 #include <stdexcept>
 #include <random>
-#include <sstream>
-#include <iostream>
+#include <string>
+#include <string_view>
+#include <format>
 
 using namespace std::string_literals;
 using namespace std::string_view_literals;
@@ -11,10 +12,8 @@ namespace docudb
 {
     namespace details
     {
-
         namespace sqlite
         {
-
             struct statement_scope
             {
                 statement_scope(sqlite3_stmt *stmt) : stmt_(stmt)
@@ -85,7 +84,7 @@ namespace docudb
             }
         }
 
-        // courtesy of https://stackoverflow.com/questions/24365331/how-can-i-generate-uuid-in-c-without-using-boost-library
+        // inspired by https://stackoverflow.com/questions/24365331/how-can-i-generate-uuid-in-c-without-using-boost-library
         namespace uuid
         {
             static std::random_device rd;
@@ -95,35 +94,38 @@ namespace docudb
 
             std::string generate_uuid_v4()
             {
-                std::stringstream ss;
-                int i;
-                ss << std::hex;
-                for (i = 0; i < 8; i++)
+                const char *hex_chars = "0123456789abcdef";
+                char uuid[37]; // 36 characters + null terminator
+
+                for (int i = 0; i < 8; ++i)
                 {
-                    ss << dis(gen);
+                    uuid[i] = hex_chars[dis(gen)];
                 }
-                ss << "-";
-                for (i = 0; i < 4; i++)
+                uuid[8] = '-';
+                for (int i = 9; i < 13; ++i)
                 {
-                    ss << dis(gen);
+                    uuid[i] = hex_chars[dis(gen)];
                 }
-                ss << "-4";
-                for (i = 0; i < 3; i++)
+                uuid[13] = '-';
+                uuid[14] = '4'; // UUID version 4
+                for (int i = 15; i < 18; ++i)
                 {
-                    ss << dis(gen);
+                    uuid[i] = hex_chars[dis(gen)];
                 }
-                ss << "-";
-                ss << dis2(gen);
-                for (i = 0; i < 3; i++)
+                uuid[18] = '-';
+                uuid[19] = hex_chars[dis2(gen)];
+                for (int i = 20; i < 23; ++i)
                 {
-                    ss << dis(gen);
+                    uuid[i] = hex_chars[dis(gen)];
                 }
-                ss << "-";
-                for (i = 0; i < 12; i++)
+                uuid[23] = '-';
+                for (int i = 24; i < 36; ++i)
                 {
-                    ss << dis(gen);
-                };
-                return ss.str();
+                    uuid[i] = hex_chars[dis(gen)];
+                }
+                uuid[36] = '\0';
+
+                return std::string(uuid);
             }
         }
     }
@@ -155,9 +157,9 @@ namespace docudb
     db_collection database::collection(std::string_view name)
     {
         // search table
-        std::string check_table_query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?;";
+        auto check_table_query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?;"sv;
         sqlite3_stmt *stmt{};
-        int rc = sqlite3_prepare_v2(db_handle, check_table_query.c_str(), -1, &stmt, nullptr);
+        int rc = sqlite3_prepare_v2(db_handle, check_table_query.data(), -1, &stmt, nullptr);
 
         // create a statement scope that finalizes the statement when it goes out of scope
         {
@@ -183,9 +185,9 @@ namespace docudb
             }
         }
 
-        std::string create_table_query = "CREATE TABLE [" + std::string(name) + "] (body TEXT, docid TEXT GENERATED ALWAYS AS (json_extract(body, '$.docid')) VIRTUAL NOT NULL);";
+        auto create_table_query = std::format("CREATE TABLE [{}] (body TEXT, docid TEXT GENERATED ALWAYS AS (json_extract(body, '$.docid')) VIRTUAL NOT NULL);", name);
         sqlite3_stmt *create_stmt{};
-        rc = sqlite3_prepare_v2(db_handle, create_table_query.c_str(), -1, &create_stmt, nullptr);
+        rc = sqlite3_prepare_v2(db_handle, create_table_query.data(), -1, &create_stmt, nullptr);
 
         details::sqlite::statement_scope create_scope(create_stmt);
         if (rc != SQLITE_OK)
@@ -207,9 +209,9 @@ namespace docudb
 
     db_document db_collection::doc(std::string_view doc_id)
     {
-        std::string get_doc_query = "SELECT body FROM [" + table_name + "] WHERE docid=?;";
+        auto get_doc_query = std::format("SELECT body FROM [{}] WHERE docid=?;", table_name);
         sqlite3_stmt *stmt{};
-        int rc = sqlite3_prepare_v2(db_handle, get_doc_query.c_str(), -1, &stmt, nullptr);
+        int rc = sqlite3_prepare_v2(db_handle, get_doc_query.data(), -1, &stmt, nullptr);
 
         details::sqlite::statement_scope scope{stmt};
 
@@ -237,11 +239,11 @@ namespace docudb
     db_document db_collection::doc()
     {
         auto new_doc_id = details::uuid::generate_uuid_v4();
-        auto new_doc_body = "{\"docid\":\"" + new_doc_id + "\"}";
+        auto new_doc_body = std::format(R"({{"docid":"{}"}})", new_doc_id);
 
-        std::string insert_doc_query = "INSERT INTO [" + table_name + "] (body) VALUES (?);";
+        auto insert_doc_query = std::format("INSERT INTO [{}] (body) VALUES (?);", table_name);
         sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db_handle, insert_doc_query.c_str(), -1, &stmt, nullptr);
+        int rc = sqlite3_prepare_v2(db_handle, insert_doc_query.data(), -1, &stmt, nullptr);
 
         details::sqlite::statement_scope scope{stmt};
 
@@ -250,7 +252,7 @@ namespace docudb
             throw db_exception{db_handle, "Failed to prepare statement"};
         }
 
-        rc = sqlite3_bind_text(stmt, 1, new_doc_body.c_str(), -1, SQLITE_TRANSIENT);
+        rc = sqlite3_bind_text(stmt, 1, new_doc_body.data(), -1, SQLITE_TRANSIENT);
         if (rc != SQLITE_OK)
         {
             throw db_exception{db_handle, "Failed to bind body text"};
@@ -279,9 +281,9 @@ namespace docudb
 
     db_document &db_document::body(std::string_view body)
     {
-        std::string update_doc_query = "UPDATE [" + table_name + "] SET body=json_set(?1, '$.docid', ?2) WHERE docid=?2;";
+        auto update_doc_query = std::format("UPDATE [{}] SET body=json_set(?1, '$.docid', ?2) WHERE docid=?2;", table_name);
         sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db_handle, update_doc_query.c_str(), -1, &stmt, nullptr);
+        int rc = sqlite3_prepare_v2(db_handle, update_doc_query.data(), -1, &stmt, nullptr);
 
         details::sqlite::statement_scope scope{stmt};
 
@@ -315,9 +317,10 @@ namespace docudb
     template <typename T>
     void db_document_json_patch_impl(sqlite3 *db_handle, std::string_view table_name, std::string_view doc_id, T value)
     {
-        std::string update_doc_query = std::string("UPDATE [") + std::string(table_name) + std::string("] SET body=json_patch(body, ?1), WHERE docid=?2;");
+        auto update_doc_query = std::format("UPDATE [{}] SET body=json_patch(body, ?1) WHERE docid=?2;", table_name);
+
         sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db_handle, update_doc_query.c_str(), -1, &stmt, nullptr);
+        int rc = sqlite3_prepare_v2(db_handle, update_doc_query.data(), -1, &stmt, nullptr);
 
         details::sqlite::statement_scope scope{stmt};
 
@@ -348,9 +351,9 @@ namespace docudb
     template <typename T>
     void db_document_json_ins_set_repl_impl(sqlite3 *db_handle, std::string_view table_name, std::string_view func, std::string_view query, std::string_view doc_id, T value)
     {
-        std::string update_doc_query = "UPDATE ["s + std::string(table_name) + "] SET body="s + std::string(func) + "(body, ?1, ?2), WHERE docid=?3;"s;
+        auto update_doc_query = std::format("UPDATE [{}] SET body={}(body, ?1, ?2) WHERE docid=?3;", table_name, func);
         sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db_handle, update_doc_query.c_str(), -1, &stmt, nullptr);
+        int rc = sqlite3_prepare_v2(db_handle, update_doc_query.data(), -1, &stmt, nullptr);
 
         details::sqlite::statement_scope scope{stmt};
 
@@ -538,9 +541,9 @@ namespace docudb
     // where
     std::vector<db_document_ref> where_impl(sqlite3 *db_handle, std::string_view table_name, std::string_view query, std::string_view op, std::string_view criteria)
     {
-        std::string get_doc_query = "SELECT docid FROM ["s + std::string(table_name) + "] WHERE json_extract(body, ?1) " + std::string(op) + " ?2;"s;
+        auto get_doc_query = std::format("SELECT docid FROM [{}] WHERE json_extract(body, ?1) {} ?2;", table_name, op);
         sqlite3_stmt *stmt{};
-        int rc = sqlite3_prepare_v2(db_handle, get_doc_query.c_str(), -1, &stmt, nullptr);
+        int rc = sqlite3_prepare_v2(db_handle, get_doc_query.data(), -1, &stmt, nullptr);
 
         details::sqlite::statement_scope scope{stmt};
 

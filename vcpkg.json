@@ -3,5 +3,8 @@
   "version": "1.0",
   "dependencies": [
     "sqlite3"
-  ]
+  ],
+  "features": {
+    "tests": { "description": "Enable test suite", "dependencies": ["doctest"] }
+  }
 }
