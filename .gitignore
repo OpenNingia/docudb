@@ -32,7 +32,19 @@
 *.app
 
 # vscode
-.vscode/
+.vscode/*
+!.vscode/tasks.json
+
+# visual studio
+.vs/
 
 # build
 build/
+
+# user files
+CMakeUserPresets.json
+
+# coverage output
+.coverage/
+LastCoverageResults.log
+

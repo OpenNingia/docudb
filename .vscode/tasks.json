@@ -1,0 +1,29 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Run OpenCppCoverage",
+            "type": "shell",
+            "command": "OpenCppCoverage",
+            "args": [
+                "--working_dir",
+                "${workspaceFolder}",
+                "--sources",
+                "${workspaceFolder}\\src*",
+                "--modules",
+                "docudb_test",
+                "--export_type",
+                "html:.coverage/coverage_report",
+                "--export_type",
+                "cobertura:.coverage/coverage.cobertura.xml",
+                "--",
+                "build/docudb_test.exe"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}
