@@ -114,3 +114,48 @@ TEST_CASE("Replace is a NOOP if the key doesn't exist")
     auto result = test_collection.where("$.new_key", docudb::ops::eq("new value"));
     REQUIRE(result.empty());
 }
+
+TEST_CASE("Build document using fluent syntax")
+{
+    // initialize database
+    docudb::database db{":memory:"};
+    // initialize collection
+    auto test_collection = db.collection("test_collection");
+    // create a new document and store its id
+    auto new_doc = test_collection.doc()
+        .set("$.text"sv, "Hello World"sv)
+        .set("$.number"sv, 42)
+        .set("$.real"sv, 42.42);
+
+    INFO("Document ID: ", new_doc.id());
+    INFO("Document: ", new_doc.body());
+
+    // check values
+    REQUIRE(new_doc.get_string("$.text") == "Hello World"sv);
+    REQUIRE(new_doc.get_number("$.number") == 42i64);
+    REQUIRE(new_doc.get_real("$.real") == 42.42);
+}
+
+TEST_CASE("Create index")
+{
+    // initialize database
+    docudb::database db{":memory:"};
+    // initialize collection
+    auto test_collection = db.collection("test_collection");
+    // create index
+    REQUIRE_NOTHROW(test_collection.index("user", "$.user"));
+}
+
+TEST_CASE("Unique index")
+{
+    // initialize database
+    docudb::database db{":memory:"};
+    // initialize collection
+    auto test_collection = db.collection("test_collection");
+    // create index
+    REQUIRE_NOTHROW(test_collection.index("user", "$.user", true));
+    // insert document with user 'wario'
+    REQUIRE_NOTHROW(test_collection.doc().set("$.user", "wario"sv));
+    // inserting wario again will throw exception
+    REQUIRE_THROWS_AS(test_collection.doc().set("$.user", "wario"sv), docudb::db_exception);
+}
