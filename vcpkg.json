@@ -5,6 +5,7 @@
     "sqlite3"
   ],
   "features": {
-    "tests": { "description": "Enable test suite", "dependencies": ["doctest"] }
+    "tests": { "description": "Enable tests", "dependencies": ["doctest"] },
+    "bench": { "description": "Enable benchmarks", "dependencies": ["benchmark"] }
   }
 }

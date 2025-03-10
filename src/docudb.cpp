@@ -14,74 +14,148 @@ namespace docudb
     {
         namespace sqlite
         {
-            struct statement_scope
+            struct statement
             {
-                statement_scope(sqlite3_stmt *stmt) : stmt_(stmt)
+                statement(sqlite3 *db_handle, std::string_view query) : db_handle_(db_handle)
                 {
+                    rc = sqlite3_prepare_v2(db_handle, query.data(), -1, &stmt_, nullptr);
+                    if (rc != SQLITE_OK)
+                    {
+                        throw db_exception{db_handle_, "Failed to prepare statement"};
+                    }
                 }
 
-                ~statement_scope()
+                ~statement()
                 {
                     sqlite3_finalize(stmt_);
                 }
 
+                sqlite3_stmt *data() const noexcept { return stmt_; }
+
+                statement &bind(int index, std::int16_t value)
+                {
+                    rc = sqlite3_bind_int(stmt_, index, value);
+                    if (rc != SQLITE_OK)
+                    {
+                        throw db_exception{db_handle_, "Failed to bind value"};
+                    }
+                    return *this;
+                }
+
+                statement &bind(int index, std::int32_t value)
+                {
+                    rc = sqlite3_bind_int(stmt_, index, value);
+                    if (rc != SQLITE_OK)
+                    {
+                        throw db_exception{db_handle_, "Failed to bind value"};
+                    }
+                    return *this;
+                }
+
+                statement &bind(int index, std::int64_t value)
+                {
+                    rc = sqlite3_bind_int64(stmt_, index, value);
+                    if (rc != SQLITE_OK)
+                    {
+                        throw db_exception{db_handle_, "Failed to bind value"};
+                    }
+                    return *this;
+                }
+
+                statement &bind(int index, std::nullptr_t value)
+                {
+                    rc = sqlite3_bind_null(stmt_, index);
+                    if (rc != SQLITE_OK)
+                    {
+                        throw db_exception{db_handle_, "Failed to bind value"};
+                    }
+                    return *this;
+                }
+
+                statement &bind(int index, std::string_view value)
+                {
+                    rc = sqlite3_bind_text(stmt_, index, value.data(), -1, SQLITE_TRANSIENT);
+                    if (rc != SQLITE_OK)
+                    {
+                        throw db_exception{db_handle_, "Failed to bind value"};
+                    }
+                    return *this;
+                }
+
+                statement &bind(int index, std::double_t value)
+                {
+                    rc = sqlite3_bind_double(stmt_, index, value);
+                    if (rc != SQLITE_OK)
+                    {
+                        throw db_exception{db_handle_, "Failed to bind value"};
+                    }
+                    return *this;
+                }
+
+                statement &bind(int index, std::float_t value)
+                {
+                    rc = sqlite3_bind_double(stmt_, index, value);
+                    if (rc != SQLITE_OK)
+                    {
+                        throw db_exception{db_handle_, "Failed to bind value"};
+                    }
+                    return *this;
+                }
+
+                // step
+                statement &step() noexcept
+                {
+                    rc = sqlite3_step(stmt_);
+                    return *this;
+                }
+
+                // read value
+                template <typename T>
+                T get(int index) const
+                {
+                    throw std::runtime_error("Unhandled data type");
+                }
+
+                template <>
+                std::string_view get(int index) const noexcept
+                {
+                    return reinterpret_cast<const char *>(sqlite3_column_text(stmt_, index));
+                }
+
+                template <>
+                std::string get(int index) const noexcept
+                {
+                    return reinterpret_cast<const char *>(sqlite3_column_text(stmt_, index));
+                }
+
+                template <>
+                std::double_t get(int index) const noexcept
+                {
+                    return sqlite3_column_double(stmt_, index);
+                }
+
+                template <>
+                std::int64_t get(int index) const noexcept
+                {
+                    return sqlite3_column_int64(stmt_, index);
+                }
+
+                template <>
+                std::int32_t get(int index) const noexcept
+                {
+                    return sqlite3_column_int(stmt_, index);
+                }
+
+                int result_code() const noexcept
+                {
+                    return rc;
+                }
+
             private:
+                sqlite3 *db_handle_;
                 sqlite3_stmt *stmt_;
+                int rc;
             };
-
-            template <typename T>
-            int bind(sqlite3_stmt *stmt, int index, T value)
-            {
-                return SQLITE_ERROR;
-            }
-
-            template <>
-            int bind(sqlite3_stmt *stmt, int index, std::int16_t value)
-            {
-                return sqlite3_bind_int(stmt, index, value);
-            }
-
-            template <>
-            int bind(sqlite3_stmt *stmt, int index, std::int32_t value)
-            {
-                return sqlite3_bind_int(stmt, index, value);
-            }
-
-            template <>
-            int bind(sqlite3_stmt *stmt, int index, std::int64_t value)
-            {
-                return sqlite3_bind_int64(stmt, index, value);
-            }
-
-            template <>
-            int bind(sqlite3_stmt *stmt, int index, std::nullptr_t value)
-            {
-                return sqlite3_bind_null(stmt, index);
-            }
-
-            template <>
-            int bind(sqlite3_stmt *stmt, int index, std::string const &value)
-            {
-                return sqlite3_bind_text(stmt, index, value.data(), -1, SQLITE_TRANSIENT);
-            }
-
-            template <>
-            int bind(sqlite3_stmt *stmt, int index, std::string_view value)
-            {
-                return sqlite3_bind_text(stmt, index, value.data(), -1, SQLITE_TRANSIENT);
-            }
-
-            template <>
-            int bind(sqlite3_stmt *stmt, int index, double value)
-            {
-                return sqlite3_bind_double(stmt, index, value);
-            }
-
-            template <>
-            int bind(sqlite3_stmt *stmt, int index, float value)
-            {
-                return sqlite3_bind_double(stmt, index, value);
-            }
         }
 
         // inspired by https://stackoverflow.com/questions/24365331/how-can-i-generate-uuid-in-c-without-using-boost-library
@@ -154,29 +228,18 @@ namespace docudb
         }
     }
 
-    db_collection database::collection(std::string_view name)
+    db_collection database::collection(std::string_view name) const
     {
-        // search table
-        auto check_table_query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?;"sv;
-        sqlite3_stmt *stmt{};
-        int rc = sqlite3_prepare_v2(db_handle, check_table_query.data(), -1, &stmt, nullptr);
-
         // create a statement scope that finalizes the statement when it goes out of scope
         {
-            details::sqlite::statement_scope scope(stmt);
-            if (rc != SQLITE_OK)
-            {
-                throw db_exception{db_handle, "Failed to prepare statement"};
-            }
-            rc = sqlite3_bind_text(stmt, 1, name.data(), -1, SQLITE_TRANSIENT);
+            auto check_table_query = "SELECT name FROM sqlite_master WHERE type='table' AND name=?;"sv;
+            details::sqlite::statement stmt{db_handle, check_table_query};
 
-            if (rc != SQLITE_OK)
-            {
-                throw db_exception{db_handle, "Failed to bind text"};
-            }
+            stmt
+                .bind(1, name)
+                .step();
 
-            rc = sqlite3_step(stmt);
-            bool table_exists = (rc == SQLITE_ROW);
+            bool table_exists = (stmt.result_code() == SQLITE_ROW);
 
             // if table exists, exit
             if (table_exists)
@@ -185,55 +248,55 @@ namespace docudb
             }
         }
 
-        auto create_table_query = std::format("CREATE TABLE [{}] (body TEXT, docid TEXT GENERATED ALWAYS AS (json_extract(body, '$.docid')) VIRTUAL NOT NULL);", name);
-        sqlite3_stmt *create_stmt{};
-        rc = sqlite3_prepare_v2(db_handle, create_table_query.data(), -1, &create_stmt, nullptr);
-
-        details::sqlite::statement_scope create_scope(create_stmt);
-        if (rc != SQLITE_OK)
         {
-            throw db_exception{db_handle, "Failed to prepare statement"};
+            auto create_table_query = std::format("CREATE TABLE [{}] (body TEXT, docid TEXT GENERATED ALWAYS AS (json_extract(body, '$.docid')) VIRTUAL NOT NULL UNIQUE);", name);
+            details::sqlite::statement stmt{db_handle, create_table_query};
+
+            if (stmt.step().result_code() != SQLITE_DONE)
+            {
+                throw db_exception{db_handle, "Failed to create table"};
+            }
         }
 
-        rc = sqlite3_step(create_stmt);
-        if (rc != SQLITE_DONE)
+        // create index on docid
         {
-            throw db_exception{db_handle, "Failed to create table"};
+            auto create_index = std::format("CREATE UNIQUE INDEX Idx_{0}_docid on [{0}](docid);", name);
+            details::sqlite::statement stmt{db_handle, create_index};
+
+            stmt.step();
+
+            if (stmt.result_code() != SQLITE_DONE)
+            {
+                throw db_exception{db_handle, "Failed to create index"};
+            }
         }
 
         return db_collection{name, db_handle};
     }
 
-    // COLLECTION
-    db_collection::db_collection(std::string_view name, sqlite3 *db_handle) : db_handle(db_handle), table_name(name) {}
-
-    db_document db_collection::doc(std::string_view doc_id)
+    std::string read_doc_body(sqlite3 *db_handle, std::string_view table_name, std::string_view doc_id)
     {
         auto get_doc_query = std::format("SELECT body FROM [{}] WHERE docid=?;", table_name);
-        sqlite3_stmt *stmt{};
-        int rc = sqlite3_prepare_v2(db_handle, get_doc_query.data(), -1, &stmt, nullptr);
+        details::sqlite::statement stmt(db_handle, get_doc_query);
 
-        details::sqlite::statement_scope scope{stmt};
+        stmt
+            .bind(1, doc_id)
+            .step();
 
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to prepare statement"};
-        }
-
-        rc = sqlite3_bind_text(stmt, 1, doc_id.data(), -1, SQLITE_TRANSIENT);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind text"};
-        }
-
-        rc = sqlite3_step(stmt);
-        if (rc != SQLITE_ROW)
+        if (stmt.result_code() != SQLITE_ROW)
         {
             throw db_exception{db_handle, "Document not found"};
         }
 
-        db_document doc{table_name, doc_id, reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)), db_handle};
-        return doc;
+        return stmt.get<std::string>(0);
+    }
+
+    // COLLECTION
+    db_collection::db_collection(std::string_view name, sqlite3 *db_handle) : db_handle(db_handle), table_name(name) {}
+
+    db_document db_collection::doc(std::string_view doc_id) const
+    {
+        return db_document{table_name, doc_id, read_doc_body(db_handle, table_name, doc_id), db_handle};
     }
 
     db_document db_collection::doc()
@@ -242,24 +305,13 @@ namespace docudb
         auto new_doc_body = std::format(R"({{"docid":"{}"}})", new_doc_id);
 
         auto insert_doc_query = std::format("INSERT INTO [{}] (body) VALUES (?);", table_name);
-        sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db_handle, insert_doc_query.data(), -1, &stmt, nullptr);
+        details::sqlite::statement stmt{db_handle, insert_doc_query};
 
-        details::sqlite::statement_scope scope{stmt};
+        stmt
+            .bind(1, new_doc_body)
+            .step();
 
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to prepare statement"};
-        }
-
-        rc = sqlite3_bind_text(stmt, 1, new_doc_body.data(), -1, SQLITE_TRANSIENT);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind body text"};
-        }
-
-        rc = sqlite3_step(stmt);
-        if (rc != SQLITE_DONE)
+        if (stmt.result_code() != SQLITE_DONE)
         {
             throw db_exception{db_handle, "Failed to insert document"};
         }
@@ -267,7 +319,98 @@ namespace docudb
         return db_document{table_name, new_doc_id, new_doc_body, db_handle};
     }
 
-    db_document::db_document(std::string_view table, std::string_view doc_id, std::string_view body, sqlite3 *db_handle) : table_name(table), doc_id(doc_id), body_data(body), db_handle(db_handle) {}
+    // where
+    std::vector<db_document_ref> where_impl(sqlite3 *db_handle, std::string_view table_name, std::string_view query, std::string_view op, std::string_view criteria)
+    {
+        auto json_query = query.size() > 0 && query[0] == '$';
+        std::string get_doc_query;
+        if (json_query)
+            get_doc_query = std::format("SELECT docid FROM [{}] WHERE json_extract(body, ?1) {} ?2;", table_name, op);
+        else
+            get_doc_query = std::format("SELECT docid FROM [{}] WHERE [{}] {} ?1;", table_name, query, op);
+
+        details::sqlite::statement stmt{db_handle, get_doc_query};
+
+        if (json_query)
+        {
+            stmt
+                .bind(1, query)
+                .bind(2, criteria);
+        }
+        else
+        {
+            stmt
+                .bind(1, criteria);
+        }
+
+        std::vector<db_document_ref> refs;
+        do
+        {
+            stmt.step();
+            if (stmt.result_code() == SQLITE_ERROR)
+            {
+                throw db_exception{db_handle, "Failed to enumerate documents"};
+            }
+            else if (stmt.result_code() != SQLITE_ROW)
+            {
+                break;
+            }
+            else
+            {
+                refs.push_back(db_document_ref{table_name, stmt.get<std::string>(0), db_handle});
+            }
+        } while (true);
+
+        return refs;
+    }
+
+    std::vector<db_document_ref> db_collection::where(std::string_view query, ops::like value) const
+    {
+        return where_impl(db_handle, table_name, query, "LIKE", value.value);
+    }
+
+    std::vector<db_document_ref> db_collection::where(std::string_view query, ops::eq value) const
+    {
+        return where_impl(db_handle, table_name, query, "=", value.value);
+    }
+
+    std::vector<db_document_ref> db_collection::where(std::string_view query, ops::neq value) const
+    {
+        return where_impl(db_handle, table_name, query, "!=", value.value);
+    }
+
+    db_collection &db_collection::index(std::string_view column_name, std::string_view query, bool unique)
+    {
+        {
+            auto alter_table = std::format("ALTER TABLE [{}] ADD COLUMN [{}] GENERATED ALWAYS AS (json_extract(body, '{}')) VIRTUAL;", table_name, column_name, query);
+            details::sqlite::statement stmt{db_handle, alter_table};
+
+            stmt.step();
+
+            if (stmt.result_code() != SQLITE_DONE)
+            {
+                throw db_exception{db_handle, "Failed to alter table"};
+            }
+        }
+
+        {
+            auto create_index = std::format("CREATE {0} INDEX Idx_{1}_{2} on [{1}]({2});", unique ? "UNIQUE" : "", table_name, column_name);
+            details::sqlite::statement stmt{db_handle, create_index};
+
+            stmt.step();
+
+            if (stmt.result_code() != SQLITE_DONE)
+            {
+                throw db_exception{db_handle, "Failed to create index"};
+            }
+        }
+
+        return *this;
+    }
+
+    // DOCUMENT
+
+    db_document::db_document(std::string_view table, std::string_view doc_id, std::string_view body, sqlite3 *db_handle) : table_name(table), doc_id(doc_id), body_data(body), invalid_body(false), db_handle(db_handle) {}
 
     std::string db_document::id() const
     {
@@ -276,41 +419,28 @@ namespace docudb
 
     std::string db_document::body() const
     {
+        if (invalid_body)
+            body_data = read_doc_body(db_handle, table_name, doc_id);
         return body_data;
     }
 
     db_document &db_document::body(std::string_view body)
     {
         auto update_doc_query = std::format("UPDATE [{}] SET body=json_set(?1, '$.docid', ?2) WHERE docid=?2;", table_name);
-        sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db_handle, update_doc_query.data(), -1, &stmt, nullptr);
+        details::sqlite::statement stmt{db_handle, update_doc_query};
 
-        details::sqlite::statement_scope scope{stmt};
+        stmt
+            .bind(1, body)
+            .bind(2, doc_id)
+            .step();
 
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to prepare statement"};
-        }
-
-        rc = sqlite3_bind_text(stmt, 1, body.data(), -1, SQLITE_TRANSIENT);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind body text"};
-        }
-
-        rc = sqlite3_bind_text(stmt, 2, doc_id.data(), -1, SQLITE_TRANSIENT);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind document id"};
-        }
-
-        rc = sqlite3_step(stmt);
-        if (rc != SQLITE_DONE)
+        if (stmt.result_code() != SQLITE_DONE)
         {
             throw db_exception{db_handle, "Failed to update document"};
         }
 
         body_data = body;
+        invalid_body = false;
         return *this;
     }
 
@@ -318,31 +448,14 @@ namespace docudb
     void db_document_json_patch_impl(sqlite3 *db_handle, std::string_view table_name, std::string_view doc_id, T value)
     {
         auto update_doc_query = std::format("UPDATE [{}] SET body=json_patch(body, ?1) WHERE docid=?2;", table_name);
+        details::sqlite::statement stmt{db_handle, update_doc_query};
 
-        sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db_handle, update_doc_query.data(), -1, &stmt, nullptr);
+        stmt
+            .bind(1, value)
+            .bind(2, doc_id)
+            .step();
 
-        details::sqlite::statement_scope scope{stmt};
-
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to prepare statement"};
-        }
-
-        rc = details::sqlite::bind(stmt, 1, value);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind replacement value"};
-        }
-
-        rc = details::sqlite::bind(stmt, 2, doc_id);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind document id"};
-        }
-
-        rc = sqlite3_step(stmt);
-        if (rc != SQLITE_DONE)
+        if (stmt.result_code() != SQLITE_DONE)
         {
             throw db_exception{db_handle, "Failed to update document"};
         }
@@ -352,36 +465,15 @@ namespace docudb
     void db_document_json_ins_set_repl_impl(sqlite3 *db_handle, std::string_view table_name, std::string_view func, std::string_view query, std::string_view doc_id, T value)
     {
         auto update_doc_query = std::format("UPDATE [{}] SET body={}(body, ?1, ?2) WHERE docid=?3;", table_name, func);
-        sqlite3_stmt *stmt;
-        int rc = sqlite3_prepare_v2(db_handle, update_doc_query.data(), -1, &stmt, nullptr);
+        details::sqlite::statement stmt{db_handle, update_doc_query};
 
-        details::sqlite::statement_scope scope{stmt};
+        stmt
+            .bind(1, query)
+            .bind(2, value)
+            .bind(3, doc_id)
+            .step();
 
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to prepare statement"};
-        }
-
-        rc = details::sqlite::bind(stmt, 1, query);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind query text"};
-        }
-
-        rc = details::sqlite::bind(stmt, 2, value);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind replacement value"};
-        }
-
-        rc = details::sqlite::bind(stmt, 3, doc_id);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind document id"};
-        }
-
-        rc = sqlite3_step(stmt);
-        if (rc != SQLITE_DONE)
+        if (stmt.result_code() != SQLITE_DONE)
         {
             throw db_exception{db_handle, "Failed to update document"};
         }
@@ -405,127 +497,182 @@ namespace docudb
 
     // replace
 
-    db_document &db_document::replace(std::string_view query, float value)
+    db_document &db_document::replace(std::string_view query, std::float_t value)
     {
         db_document_replace_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
-    db_document &db_document::replace(std::string_view query, double value)
+    db_document &db_document::replace(std::string_view query, std::double_t value)
     {
         db_document_replace_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::replace(std::string_view query, std::int32_t value)
     {
         db_document_replace_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::replace(std::string_view query, std::int64_t value)
     {
         db_document_replace_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::replace(std::string_view query, std::nullptr_t value)
     {
         db_document_replace_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::replace(std::string_view query, std::string const &value)
     {
         db_document_replace_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::replace(std::string_view query, std::string_view value)
     {
         db_document_replace_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     // set
-    db_document &db_document::set(std::string_view query, float value)
+    db_document &db_document::set(std::string_view query, std::float_t value)
     {
         db_document_set_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
-    db_document &db_document::set(std::string_view query, double value)
+    db_document &db_document::set(std::string_view query, std::double_t value)
     {
         db_document_set_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::set(std::string_view query, std::int32_t value)
     {
         db_document_set_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::set(std::string_view query, std::int64_t value)
     {
         db_document_set_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::set(std::string_view query, std::nullptr_t value)
     {
         db_document_set_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::set(std::string_view query, std::string const &value)
     {
         db_document_set_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::set(std::string_view query, std::string_view value)
     {
         db_document_set_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     // insert
-    db_document &db_document::insert(std::string_view query, float value)
+    db_document &db_document::insert(std::string_view query, std::float_t value)
     {
         db_document_insert_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
-    db_document &db_document::insert(std::string_view query, double value)
+    db_document &db_document::insert(std::string_view query, std::double_t value)
     {
         db_document_insert_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::insert(std::string_view query, std::int32_t value)
     {
         db_document_insert_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::insert(std::string_view query, std::int64_t value)
     {
         db_document_insert_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::insert(std::string_view query, std::nullptr_t value)
     {
         db_document_insert_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::insert(std::string_view query, std::string const &value)
     {
         db_document_insert_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
     db_document &db_document::insert(std::string_view query, std::string_view value)
     {
         db_document_insert_impl(db_handle, table_name, query, doc_id, value);
+        invalid_body = true;
         return *this;
     }
 
     // patch
-    db_document &db_document::patch(std::string const &json)
-    {
-        db_document_json_patch_impl(db_handle, table_name, doc_id, json);
-        return *this;
-    }
     db_document &db_document::patch(std::string_view json)
     {
         db_document_json_patch_impl(db_handle, table_name, doc_id, json);
+        invalid_body = true;
         return *this;
     }
 
-    // document ref
+    template <class R>
+    R get_value_impl(sqlite3 *db_handle, std::string_view table_name, std::string const &doc_id, std::string_view query)
+    {
+        auto get_doc_query = std::format("SELECT json_extract(body, ?1) FROM [{}] WHERE docid=?2;", table_name);
+        details::sqlite::statement stmt{db_handle, get_doc_query};
+
+        stmt
+            .bind(1, query)
+            .bind(2, doc_id)
+            .step();
+
+        if (stmt.result_code() != SQLITE_ROW)
+        {
+            throw db_exception{db_handle, "Document not found"};
+        }
+
+        return stmt.get<R>(0);
+    }
+
+    // get string
+    std::string db_document::get_string(std::string_view query) const
+    {
+        return get_value_impl<std::string>(db_handle, table_name, doc_id, query);
+    }
+
+    // get number
+    std::int64_t db_document::get_number(std::string_view query) const
+    {
+        return get_value_impl<std::int64_t>(db_handle, table_name, doc_id, query);
+    }
+
+    // get real
+    std::double_t db_document::get_real(std::string_view query) const
+    {
+        return get_value_impl<std::double_t>(db_handle, table_name, doc_id, query);
+    }
+
+    // DOCUMENT_REF
+
     db_document_ref::db_document_ref(std::string_view table_name, std::string_view doc_id, sqlite3 *db_handle) : table_name(table_name), doc_id(doc_id), db_handle(db_handle) {}
 
     std::string db_document_ref::id() const
@@ -536,61 +683,5 @@ namespace docudb
     db_document db_document_ref::doc() const
     {
         return db_collection{table_name, db_handle}.doc(doc_id);
-    }
-
-    // where
-    std::vector<db_document_ref> where_impl(sqlite3 *db_handle, std::string_view table_name, std::string_view query, std::string_view op, std::string_view criteria)
-    {
-        auto get_doc_query = std::format("SELECT docid FROM [{}] WHERE json_extract(body, ?1) {} ?2;", table_name, op);
-        sqlite3_stmt *stmt{};
-        int rc = sqlite3_prepare_v2(db_handle, get_doc_query.data(), -1, &stmt, nullptr);
-
-        details::sqlite::statement_scope scope{stmt};
-
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to prepare statement"};
-        }
-
-        rc = sqlite3_bind_text(stmt, 1, query.data(), -1, SQLITE_TRANSIENT);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind query text"};
-        }
-
-        rc = sqlite3_bind_text(stmt, 2, criteria.data(), -1, SQLITE_TRANSIENT);
-        if (rc != SQLITE_OK)
-        {
-            throw db_exception{db_handle, "Failed to bind criteria text"};
-        }
-
-        std::vector<db_document_ref> refs;
-        do
-        {
-            rc = sqlite3_step(stmt);
-            if (rc == SQLITE_ERROR)
-            {
-                throw db_exception{db_handle, "Failed to enumerate documents"};
-            }
-            if (rc != SQLITE_ROW)
-            {
-                break;
-            }
-            refs.push_back(db_document_ref{table_name, reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)), db_handle});
-        } while (true);
-
-        return refs;
-    }
-    std::vector<db_document_ref> db_collection::where(std::string_view query, ops::like value)
-    {
-        return where_impl(db_handle, table_name, query, "LIKE", value.value);
-    }
-    std::vector<db_document_ref> db_collection::where(std::string_view query, ops::eq value)
-    {
-        return where_impl(db_handle, table_name, query, "=", value.value);
-    }
-    std::vector<db_document_ref> db_collection::where(std::string_view query, ops::neq value)
-    {
-        return where_impl(db_handle, table_name, query, "!=", value.value);
     }
 }
