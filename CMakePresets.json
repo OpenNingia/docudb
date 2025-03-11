@@ -26,7 +26,8 @@
       "cacheVariables": {
         "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
         "CMAKE_C_COMPILER": "/usr/bin/gcc-13",
-        "CMAKE_CXX_COMPILER": "/usr/bin/g++-13"       
+        "CMAKE_CXX_COMPILER": "/usr/bin/g++-13",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "1"   
       }
     }
   ]
