@@ -4,6 +4,8 @@
 #include <string>
 #include <string_view>
 #include <format>
+#include <thread>
+#include <algorithm>
 
 using namespace std::string_literals;
 using namespace std::string_view_literals;
@@ -111,39 +113,9 @@ namespace docudb
 
                 // read value
                 template <typename T>
-                T get(int index) const
+                T get(int index) const noexcept
                 {
-                    throw std::runtime_error("Unhandled data type");
-                }
-
-                template <>
-                std::string_view get(int index) const noexcept
-                {
-                    return reinterpret_cast<const char *>(sqlite3_column_text(stmt_, index));
-                }
-
-                template <>
-                std::string get(int index) const noexcept
-                {
-                    return reinterpret_cast<const char *>(sqlite3_column_text(stmt_, index));
-                }
-
-                template <>
-                std::double_t get(int index) const noexcept
-                {
-                    return sqlite3_column_double(stmt_, index);
-                }
-
-                template <>
-                std::int64_t get(int index) const noexcept
-                {
-                    return sqlite3_column_int64(stmt_, index);
-                }
-
-                template <>
-                std::int32_t get(int index) const noexcept
-                {
-                    return sqlite3_column_int(stmt_, index);
+                    static_assert(std::false_type::value, "Unsupported type for get method");
                 }
 
                 int result_code() const noexcept
@@ -156,15 +128,47 @@ namespace docudb
                 sqlite3_stmt *stmt_;
                 int rc;
             };
+
+            template <>
+            std::string_view statement::get(int index) const noexcept
+            {
+                return reinterpret_cast<const char *>(sqlite3_column_text(stmt_, index));
+            }
+
+            template <>
+            std::string statement::get(int index) const noexcept
+            {
+                return reinterpret_cast<const char *>(sqlite3_column_text(stmt_, index));
+            }
+
+            template <>
+            std::double_t statement::get(int index) const noexcept
+            {
+                return sqlite3_column_double(stmt_, index);
+            }
+
+            template <>
+            std::int64_t statement::get(int index) const noexcept
+            {
+                return sqlite3_column_int64(stmt_, index);
+            }
+
+            template <>
+            std::int32_t statement::get(int index) const noexcept
+            {
+                return sqlite3_column_int(stmt_, index);
+            }            
         }
 
         // inspired by https://stackoverflow.com/questions/24365331/how-can-i-generate-uuid-in-c-without-using-boost-library
         namespace uuid
         {
-            static std::random_device rd;
-            static std::mt19937 gen(rd());
-            static std::uniform_int_distribution<> dis(0, 15);
-            static std::uniform_int_distribution<> dis2(8, 11);
+            thread_local std::random_device rd;
+            thread_local std::size_t threadIdHash = std::hash<std::thread::id>{}(std::this_thread::get_id());
+            thread_local uint64_t mixedSeed = static_cast<uint64_t>(rd()) ^ static_cast<uint64_t>(threadIdHash);
+            thread_local std::mt19937 gen(static_cast<unsigned int>(mixedSeed));
+            thread_local std::uniform_int_distribution<> dis(0, 15);
+            thread_local std::uniform_int_distribution<> dis2(8, 11);
 
             std::string generate_uuid_v4()
             {

@@ -5,40 +5,55 @@
 
 using namespace std::string_view_literals;
 
-void AddEmptyDocument(benchmark::State &state)
+void BM_AddEmptyDocument(benchmark::State &state)
 {
     // initialize database
     docudb::database db{":memory:"};
     // initialize collection
     auto test_collection = db.collection("test_collection");
 
-    while (state.KeepRunning())
+    std::size_t count {0};
+
+    for(auto _ : state)
     {
-        benchmark::DoNotOptimize(
-            test_collection.doc());
+        int i{0};
+        for(i = 0; i < state.range(0); i++) {
+            benchmark::DoNotOptimize(test_collection.doc());
+        }
+        count += i;
     }
+
+    state.SetItemsProcessed(count);
 }
 
-BENCHMARK(AddEmptyDocument);
+BENCHMARK(BM_AddEmptyDocument)->Arg(10)->Arg(100)->Arg(1000)->Arg(10000)->Threads(4);
 
-void AddDocument(benchmark::State &state)
+void BM_AddDocuments(benchmark::State &state)
 {
     // initialize database
     docudb::database db{":memory:"};
     // initialize collection
     auto test_collection = db.collection("test_collection");
 
-    while (state.KeepRunning())
+    std::size_t count {0};
+
+    for(auto _ : state)
     {
-        benchmark::DoNotOptimize(
-            test_collection.doc()
-                .set("$.text", "Hello World"sv)
-                .set("$.int", 42)
-                .set("$.real", 42.42));
+        int i{0};
+        for(i = 0; i < state.range(0); i++) {
+            benchmark::DoNotOptimize(
+                test_collection.doc()
+                    .set("$.text", "Hello World"sv)
+                    .set("$.int", 42)
+                    .set("$.real", 42.42));
+        }
+        count += i;
     }
+
+    state.SetItemsProcessed(count);
 }
 
-BENCHMARK(AddDocument);
+BENCHMARK(BM_AddDocuments)->Arg(10)->Arg(100)->Arg(1000)->Arg(10000)->Threads(4);
 
 std::string GenerateRandomUsername()
 {
@@ -87,39 +102,40 @@ void FillCollection(docudb::db_collection &collection, std::size_t size)
     }
 }
 
-void SearchNoIndex(benchmark::State &state)
+void BM_SearchNoIndex(benchmark::State &state)
 {
     // initialize database
     docudb::database db{":memory:"};
 
     auto collection = db.collection("test");
-    FillCollection(collection, state.range_x());
+    FillCollection(collection, state.range(0));
 
-    while (state.KeepRunning())
+    for(auto _ : state)
     {
         benchmark::DoNotOptimize(
             collection.where("$.user", docudb::ops::eq("wario")));
     }
 }
 
-BENCHMARK(SearchNoIndex)->Arg(10)->Arg(100)->Arg(1000)->Arg(10000);
+BENCHMARK(BM_SearchNoIndex)->Arg(10)->Arg(100)->Arg(1000)->Arg(10000)->Threads(4);
 
-void SearchWithIndex(benchmark::State &state)
+void BM_SearchWithIndex(benchmark::State &state)
 {
     // initialize database
     docudb::database db{":memory:"};
 
     auto collection = db.collection("test");
-    FillCollection(collection, state.range_x());
+    FillCollection(collection, state.range(0));
     collection.index("user"sv, "$.user"sv);
 
-    while (state.KeepRunning())
+    for(auto _ : state)
     {
         benchmark::DoNotOptimize(
             collection.where("user", docudb::ops::eq("wario")));
     }
 }
 
-BENCHMARK(SearchWithIndex)->Arg(10)->Arg(100)->Arg(1000)->Arg(10000);
+BENCHMARK(BM_SearchWithIndex)->Arg(10)->Arg(100)->Arg(1000)->Arg(10000)->Threads(4);
 
 BENCHMARK_MAIN();
+
