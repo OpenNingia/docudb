@@ -51,3 +51,5 @@ if (BUILD_BENCH)
     add_executable(docudb_bench bench/bench.cpp)
     target_link_libraries(docudb_bench PRIVATE docudb benchmark::benchmark benchmark::benchmark_main)
 endif()
+
+add_subdirectory(doc)
