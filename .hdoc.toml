@@ -1,0 +1,24 @@
+[project]
+name = "docudb"
+version = "1.0.0"
+git_repo_url = "https://github.com/OpenNingia/docudb/"
+git_default_branch = "main"
+
+[paths]
+compile_commands = "build/compile_commands.json"
+output_dir = "hdoc-output"
+
+[includes]
+paths = ['./src']
+use_system_includes = true
+
+[ignore]
+paths = [
+  "doctest/",
+  "bench/",
+  "src/docudb.cpp"
+]
+ignore_private_members = true
+
+[pages]
+homepage = "README.md"
