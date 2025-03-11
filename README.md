@@ -8,6 +8,13 @@ DocDB is a lightweight document database built on top of SQLite. It provides a s
 - Query documents with various operations (like, eq, neq)
 - Patch JSON documents
 
+## Compiler support
+
+The library has been tested with the following C++ compiler
+
+- cl 19.40.33812 (VS 2022)
+- g++ 13.1.0
+
 ## Installation
 
 To use DocDB, include the header file in your project:

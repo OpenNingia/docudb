@@ -132,7 +132,7 @@ TEST_CASE("Build document using fluent syntax")
 
     // check values
     REQUIRE(new_doc.get_string("$.text") == "Hello World"sv);
-    REQUIRE(new_doc.get_number("$.number") == 42i64);
+    REQUIRE(new_doc.get_number("$.number") == 42ll);
     REQUIRE(new_doc.get_real("$.real") == 42.42);
 }
 
