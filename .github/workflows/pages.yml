@@ -20,6 +20,9 @@ jobs:
         url: 'https://github.com/jothepro/doxygen-awesome-css/archive/refs/tags/v2.3.4.zip'
         destination: doxygen-awesome-css-2.3.4
 
+    - name: Create output directory
+      run: mkdir -p build/doc
+
     - name: Doxygen Action
       uses: mattnotmitt/doxygen-action@1.12.0    
 
