@@ -15,6 +15,10 @@ The library has been tested with the following C++ compiler
 - cl 19.40.33812 (VS 2022)
 - g++ 13.1.0
 
+## Inspiration
+
+https://dgl.cx/2020/06/sqlite-json-support
+
 ## Installation
 
 To use DocDB, include the header file in your project:

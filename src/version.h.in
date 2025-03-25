@@ -1,0 +1,7 @@
+#pragma once
+
+
+#cmakedefine DOCUDB_VERSION "@DOCUDB_VERSION@"
+#cmakedefine DOCUDB_VERSION_DATE "@DOCUDB_VERSION_DATE@"
+#define DOCUDB_VERSION_AUTHOR "Daniele Simonetti"
+#define DOCUDB_VERSION_EMAIL "oppifjellet@gmail.com"

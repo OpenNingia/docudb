@@ -12,9 +12,14 @@ if(BUILD_BENCH)
   list(APPEND VCPKG_MANIFEST_FEATURES "bench")
 endif()
 
+string(TIMESTAMP _NOW "%Y-%m-%dT%H:%M:%SZ")
+mark_as_advanced(_NOW)
+
+set(DOCUDB_VERSION "1.0.0")
+set(DOCUDB_VERSION_DATE ${_NOW})
 
 # Set the project name
-project(docudb)
+project(docudb VERSION ${DOCUDB_VERSION} LANGUAGES CXX)
 
 # c++ standard
 set(CMAKE_CXX_STANDARD 20)
@@ -33,9 +38,13 @@ if (BUILD_BENCH)
     find_package(benchmark CONFIG REQUIRED)
 endif(BUILD_BENCH)
 
+# configure version file
+configure_file(src/version.h.in src/version.h @ONLY)
+
 # Add the library
 add_library(docudb src/docudb.cpp)
 target_include_directories(docudb PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_include_directories(docudb PRIVATE ${CMAKE_BINARY_DIR}/src)
 target_link_libraries(docudb PUBLIC unofficial::sqlite3::sqlite3)
 
 if (BUILD_TESTS)

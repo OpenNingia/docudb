@@ -7,11 +7,23 @@
 #include <thread>
 #include <algorithm>
 
+#include "version.h"
+
 using namespace std::string_literals;
 using namespace std::string_view_literals;
 
 namespace docudb
 {
+    std::string get_version() noexcept
+    {
+        return DOCUDB_VERSION;
+    }
+
+    std::string get_build_timestamp() noexcept
+    {
+        return DOCUDB_VERSION_DATE;
+    }
+
     namespace details
     {
         namespace sqlite
@@ -157,7 +169,7 @@ namespace docudb
             std::int32_t statement::get(int index) const noexcept
             {
                 return sqlite3_column_int(stmt_, index);
-            }            
+            }
         }
 
         // inspired by https://stackoverflow.com/questions/24365331/how-can-i-generate-uuid-in-c-without-using-boost-library

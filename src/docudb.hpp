@@ -11,6 +11,20 @@
 
 namespace docudb
 {
+    /**
+     * \brief Gets the version of the library.
+     *
+     * \returns std::string The version string.
+     */
+    std::string get_version() noexcept;
+
+    /**
+     * \brief Gets the build timestamp.
+     *
+     * \returns std::string The timestamp string.
+     */
+    std::string get_build_timestamp() noexcept;
+
     namespace ops
     {
         /**
