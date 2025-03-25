@@ -4,8 +4,10 @@
 PROJECT_NAME           = docudb
 PROJECT_NUMBER         = 1.0
 OUTPUT_DIRECTORY       = build/doc
-INPUT                  = src
-RECURSIVE              = YES
+INPUT                  = README.md src
+EXCLUDE                = src/docudb.cpp
+RECURSIVE              = NO
+USE_MDFILE_AS_MAINPAGE = README.md
 
 # Build related settings
 EXTRACT_ALL            = YES

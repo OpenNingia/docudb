@@ -1,19 +1,21 @@
-# DocDB
+# DocuDB
 
-DocDB is a lightweight document database built on top of SQLite. It provides a simple interface for managing JSON documents.
+DocuDB is a lightweight document database built on top of SQLite. It provides a simple interface for managing JSON documents.
 
 ## Features
 
 - Create, read, update, and delete documents
-- Query documents with various operations (like, eq, neq)
+- Query documents with various operations (like, eq, neq, ...)
 - Patch JSON documents
 
 ## Compiler support
 
-The library has been tested with the following C++ compiler
+The library has been tested with the following C++ compilers
 
 - cl 19.40.33812 (VS 2022)
 - g++ 13.1.0
+
+However it should build with any reasonable C++20 compiler.
 
 ## Inspiration
 
@@ -35,7 +37,7 @@ To use DocDB, include the header file in your project:
 #include "docudb.hpp"
 
 int main() {
-    docudb::database db("path_to_db_file");
+    docudb::database db(":memory:");
     return 0;
 }
 ```
@@ -66,14 +68,16 @@ for (const auto& doc_ref : results) {
 ### Updating a Document
 
 ```cpp
-docudb::db_document doc = collection.doc("document_id");
-doc.body(R"({"name": "Jane Doe", "age": 25})");
+auto document_id = ...
+docudb::db_document doc = collection.doc(document_id);
+doc.set("$.age"sv, 42);
 ```
 
 ### Deleting a Document
 
 ```cpp
-collection.remove("document_id");
+auto document_id = ...
+collection.remove(document_id);
 ```
 
 ## License
