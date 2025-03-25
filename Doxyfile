@@ -1,0 +1,44 @@
+# Doxyfile configuration for docudb project
+
+# Project related settings
+PROJECT_NAME           = docudb
+PROJECT_NUMBER         = 1.0
+OUTPUT_DIRECTORY       = build/doc
+INPUT                  = src
+RECURSIVE              = YES
+
+# Build related settings
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+
+# Documentation related settings
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_MAN           = NO
+GENERATE_XML           = NO
+
+# Source browser settings
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = YES
+STRIP_CODE_COMMENTS    = NO
+
+# Other settings
+WARNINGS               = YES
+QUIET                  = NO
+
+# Doxygen Awesome
+GENERATE_TREEVIEW      = YES # required!
+DISABLE_INDEX          = NO
+FULL_SIDEBAR           = NO
+HTML_COLORSTYLE        = LIGHT # required with Doxygen >= 1.9.5
+HTML_EXTRA_STYLESHEET  = doxygen-awesome-css-2.3.4/doxygen-awesome.css \
+                         doxygen-awesome-css-2.3.4/doxygen-awesome-sidebar-only.css \
+                         doxygen-awesome-css-2.3.4/doxygen-awesome-sidebar-only-darkmode-toggle.css
+HTML_EXTRA_FILES       = doxygen-awesome-css-2.3.4/doxygen-awesome-darkmode-toggle.js \
+                         doxygen-awesome-css-2.3.4/doxygen-awesome-fragment-copy-button.js \
+                         doxygen-awesome-css-2.3.4/doxygen-awesome-paragraph-link.js \
+                         doxygen-awesome-css-2.3.4/doxygen-awesome-interactive-toc.js
+HTML_HEADER            = doc/header.html
+HTML_COPY_CLIPBOARD    = NO # required with Doxygen > 1.10.0

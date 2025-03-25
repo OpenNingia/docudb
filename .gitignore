@@ -48,3 +48,6 @@ CMakeUserPresets.json
 .coverage/
 LastCoverageResults.log
 
+# Doxygen awesome
+doxygen-awesome-css*
+

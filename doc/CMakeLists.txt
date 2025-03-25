@@ -6,11 +6,11 @@ endif(STANDARDESE-NOTFOUND)
 
 if (STANDARDESE)
     add_custom_target(
-        docudb_docs 
+        docudb_docs
         ALL
-        COMMAND ${STANDARDESE} --config ${CMAKE_SOURCE_DIR}/standardese.config ${CMAKE_SOURCE_DIR}/src/*
-        SOURCES 
-        ${CMAKE_SOURCE_DIR}/standardese.config
+        COMMAND ${STANDARDESE} --config ${CMAKE_SOURCE_DIR}/.standardese.config ${CMAKE_SOURCE_DIR}/src/*
+        SOURCES
+        ${CMAKE_SOURCE_DIR}/.standardese.config
         ${CMAKE_SOURCE_DIR}/src/docudb.hpp
         COMMENT "Building documentation with standardese"
         )
