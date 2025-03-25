@@ -20,16 +20,17 @@ jobs:
         url: 'https://github.com/jothepro/doxygen-awesome-css/archive/refs/tags/v2.3.4.zip'
         destination: .
 
-    - name: Doxygen Action
-      uses: mattnotmitt/doxygen-action@1.12.0 
-      with:
-        doxyfile-path: './Doxyfile'   
+    - name: Install doxygen
+      uses: ssciwr/doxygen-install@v1
+
+    - name: Run Doxygen
+      run: doxygen ./Doxyfile
 
     - name: Upload static files as artifact
       id: deployment
       uses: actions/upload-pages-artifact@v3
       with:
-        path: build_docs/
+        path: build/doc/html
 
   # Deployment job
   deploy:
