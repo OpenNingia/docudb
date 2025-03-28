@@ -3,14 +3,19 @@ cmake_minimum_required(VERSION 3.20)
 # options
 option(BUILD_TESTS "Build the test suite" ON)
 option(BUILD_BENCH "Build the benchmark suite" ON)
+option(BUILD_EXAMPLES "Build the examples" ON)
 
 if(BUILD_TESTS)
   list(APPEND VCPKG_MANIFEST_FEATURES "tests")
-endif()
+endif(BUILD_TESTS)
 
 if(BUILD_BENCH)
   list(APPEND VCPKG_MANIFEST_FEATURES "bench")
-endif()
+endif(BUILD_BENCH)
+
+if(BUILD_EXAMPLES)
+  list(APPEND VCPKG_MANIFEST_FEATURES "examples")
+endif(BUILD_EXAMPLES)
 
 string(TIMESTAMP _NOW "%Y-%m-%dT%H:%M:%SZ")
 mark_as_advanced(_NOW)
@@ -38,6 +43,10 @@ if (BUILD_BENCH)
     find_package(benchmark CONFIG REQUIRED)
 endif(BUILD_BENCH)
 
+if (BUILD_EXAMPLES)
+    find_package(FLTK CONFIG REQUIRED)
+endif(BUILD_EXAMPLES)
+
 # configure version file
 configure_file(src/version.h.in src/version.h @ONLY)
 
@@ -60,5 +69,10 @@ if (BUILD_BENCH)
     add_executable(docudb_bench bench/bench.cpp)
     target_link_libraries(docudb_bench PRIVATE docudb benchmark::benchmark benchmark::benchmark_main)
 endif()
+
+if (BUILD_EXAMPLES)
+    message("Building examples")
+    add_subdirectory(examples/docui)
+endif(BUILD_EXAMPLES)
 
 add_subdirectory(doc)

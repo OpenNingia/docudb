@@ -5,6 +5,7 @@
   ],
   "features": {
     "tests": { "description": "Enable tests", "dependencies": ["doctest"] },
-    "bench": { "description": "Enable benchmarks", "dependencies": ["benchmark"] }
+    "bench": { "description": "Enable benchmarks", "dependencies": ["benchmark"] },
+    "examples": { "description": "Enable Examples", "dependencies": ["fltk"] }
   }
 }

@@ -74,6 +74,13 @@ namespace docudb
     struct db_document_ref
     {
         /**
+         * \brief Constructs a new db_document_ref object from a db_document object.
+         *
+         * \param doc The document object.
+         */
+        db_document_ref(db_document const& doc);
+
+        /**
          * \brief Constructs a new db_document_ref object.
          *
          * \param table_name The name of the table.
@@ -234,6 +241,7 @@ namespace docudb
         bool invalid_body;
         sqlite3 *db_handle;
         friend struct db_collection;
+        friend struct db_document_ref;
 
         /**
          * \brief Constructs a new db_document object.
@@ -260,6 +268,13 @@ namespace docudb
         db_collection(std::string_view name, sqlite3 *db_handle);
 
         /**
+         * \brief Gets the collection name
+         *
+         * \returns std::string The collection name.
+         */
+        std::string name() const noexcept;        
+
+        /**
          * \brief Gets a document by ID.
          *
          * \param doc_id The document ID.
@@ -273,6 +288,13 @@ namespace docudb
          * \returns db_document The new document object.
          */
         db_document doc();
+
+        /**
+         * \brief Gets all documents in the collection.
+         *
+         * \returns std::vector<db_document_ref> The list of document references.
+         */
+        std::vector<db_document_ref> docs();        
 
         /**
          * \brief Removes a document by ID.
@@ -307,7 +329,6 @@ namespace docudb
          * \returns std::vector<db_document_ref> The list of document references.
          */
         std::vector<db_document_ref> where(std::string_view query, ops::neq value) const;
-
 
         /**
          * \brief Indexes the document based on the specified column and query.
@@ -351,6 +372,13 @@ namespace docudb
          */
         db_collection collection(std::string_view name) const;
 
+
+        /**
+         * \brief Gets all collections
+         *
+         * \returns std::vector<db_collection> The collection list.
+         */
+        std::vector<db_collection> collections() const;
     private:
         sqlite3 *db_handle;
     };

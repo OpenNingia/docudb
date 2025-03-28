@@ -290,6 +290,34 @@ namespace docudb
         return db_collection{name, db_handle};
     }
 
+    std::vector<db_collection> database::collections() const
+    {
+        {
+            auto check_table_query = "SELECT name FROM sqlite_master WHERE type='table';"sv;
+            details::sqlite::statement stmt{db_handle, check_table_query};
+
+            std::vector<db_collection> collections;
+            do
+            {
+                stmt.step();
+                if (stmt.result_code() == SQLITE_ERROR)
+                {
+                    throw db_exception{db_handle, "Failed to enumerate collections"};
+                }
+                else if (stmt.result_code() != SQLITE_ROW)
+                {
+                    break;
+                }
+                else
+                {
+                    collections.push_back(db_collection{stmt.get<std::string>(0), db_handle});
+                }
+            } while (true);
+    
+            return collections;
+        }
+    }
+
     std::string read_doc_body(sqlite3 *db_handle, std::string_view table_name, std::string_view doc_id)
     {
         auto get_doc_query = std::format("SELECT body FROM [{}] WHERE docid=?;", table_name);
@@ -309,6 +337,11 @@ namespace docudb
 
     // COLLECTION
     db_collection::db_collection(std::string_view name, sqlite3 *db_handle) : db_handle(db_handle), table_name(name) {}
+
+    std::string db_collection::name() const noexcept
+    {
+        return table_name;
+    }
 
     db_document db_collection::doc(std::string_view doc_id) const
     {
@@ -334,6 +367,33 @@ namespace docudb
 
         return db_document{table_name, new_doc_id, new_doc_body, db_handle};
     }
+
+    // get all documents
+    std::vector<db_document_ref> db_collection::docs()
+    {
+        std::string get_doc_query = std::format("SELECT docid FROM [{}];", table_name);
+        details::sqlite::statement stmt{db_handle, get_doc_query};
+
+        std::vector<db_document_ref> refs;
+        do
+        {
+            stmt.step();
+            if (stmt.result_code() == SQLITE_ERROR)
+            {
+                throw db_exception{db_handle, "Failed to enumerate documents"};
+            }
+            else if (stmt.result_code() != SQLITE_ROW)
+            {
+                break;
+            }
+            else
+            {
+                refs.push_back(db_document_ref{table_name, stmt.get<std::string>(0), db_handle});
+            }
+        } while (true);
+
+        return refs;
+    }    
 
     // where
     std::vector<db_document_ref> where_impl(sqlite3 *db_handle, std::string_view table_name, std::string_view query, std::string_view op, std::string_view criteria)
@@ -689,6 +749,7 @@ namespace docudb
 
     // DOCUMENT_REF
 
+    db_document_ref::db_document_ref(db_document const& doc) : table_name(doc.table_name), doc_id(doc.doc_id), db_handle(doc.db_handle) {}
     db_document_ref::db_document_ref(std::string_view table_name, std::string_view doc_id, sqlite3 *db_handle) : table_name(table_name), doc_id(doc_id), db_handle(db_handle) {}
 
     std::string db_document_ref::id() const
