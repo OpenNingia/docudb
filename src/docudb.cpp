@@ -7,7 +7,7 @@
 #include <thread>
 #include <algorithm>
 
-#include "version.h"
+#include "docudb_version.h"
 
 using namespace std::string_literals;
 using namespace std::string_view_literals;
