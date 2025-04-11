@@ -14,6 +14,10 @@ using namespace std::string_view_literals;
 
 namespace docudb
 {
+    namespace query {
+        thread_local int bind_counter = 0;
+    }
+
     std::string get_version() noexcept
     {
         return DOCUDB_VERSION;
@@ -313,7 +317,7 @@ namespace docudb
                     collections.push_back(db_collection{stmt.get<std::string>(0), db_handle});
                 }
             } while (true);
-    
+
             return collections;
         }
     }
@@ -393,7 +397,7 @@ namespace docudb
         } while (true);
 
         return refs;
-    }    
+    }
 
     // where
     std::vector<db_document_ref> where_impl(sqlite3 *db_handle, std::string_view table_name, std::string_view query, std::string_view op, std::string_view criteria)
@@ -440,19 +444,36 @@ namespace docudb
         return refs;
     }
 
-    std::vector<db_document_ref> db_collection::where(std::string_view query, ops::like value) const
+    std::vector<db_document_ref> db_collection::find(query::queryable_type_eraser q) const
     {
-        return where_impl(db_handle, table_name, query, "LIKE", value.value);
-    }
+        auto query_string = std::format("SELECT docid FROM [{}] WHERE {}", table_name, q.to_query_string());
 
-    std::vector<db_document_ref> db_collection::where(std::string_view query, ops::eq value) const
-    {
-        return where_impl(db_handle, table_name, query, "=", value.value);
-    }
+        details::sqlite::statement stmt{db_handle, query_string};
 
-    std::vector<db_document_ref> db_collection::where(std::string_view query, ops::neq value) const
-    {
-        return where_impl(db_handle, table_name, query, "!=", value.value);
+        auto binder = q.get_binder();
+
+        for (const auto& [key, value] : binder.get_parameters()) {
+            std::visit([&](auto&& val) { stmt.bind(key, val); }, value);
+        }
+        std::vector<db_document_ref> refs;
+        do
+        {
+            stmt.step();
+            if (stmt.result_code() == SQLITE_ERROR)
+            {
+                throw db_exception{db_handle, "Failed to enumerate documents"};
+            }
+            else if (stmt.result_code() != SQLITE_ROW)
+            {
+                break;
+            }
+            else
+            {
+                refs.push_back(db_document_ref{table_name, stmt.get<std::string>(0), db_handle});
+            }
+        } while (true);
+
+        return refs;
     }
 
     db_collection &db_collection::index(std::string_view column_name, std::string_view query, bool unique)

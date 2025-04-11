@@ -2,8 +2,8 @@ cmake_minimum_required(VERSION 3.20)
 
 # options
 option(BUILD_TESTS "Build the test suite" ON)
-option(BUILD_BENCH "Build the benchmark suite" ON)
-option(BUILD_EXAMPLES "Build the examples" ON)
+option(BUILD_BENCH "Build the benchmark suite" OFF)
+option(BUILD_EXAMPLES "Build the examples" OFF)
 
 if(BUILD_TESTS)
   list(APPEND VCPKG_MANIFEST_FEATURES "tests")
@@ -29,6 +29,10 @@ project(docudb VERSION ${DOCUDB_VERSION} LANGUAGES CXX)
 # c++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
+
+IF(MSVC)
+    SET(CMAKE_CXX_FLAGS "/EHsc")
+ENDIF(MSVC)
 
 # sqlite dependency
 find_package(unofficial-sqlite3 CONFIG REQUIRED)
