@@ -34,8 +34,20 @@ IF(MSVC)
     SET(CMAKE_CXX_FLAGS "/EHsc")
 ENDIF(MSVC)
 
-# sqlite dependency
-find_package(unofficial-sqlite3 CONFIG REQUIRED)
+# try to find system sqlite3
+find_package(SQLite3)
+
+if (NOT SQLite3_FOUND)
+    # get sqlite dependency from vcpkg
+    find_package(unofficial-sqlite3 CONFIG)
+    if (NOT unofficial-sqlite3_FOUND)
+        message(FATAL_ERROR "SQLite3 not found. Please install SQLite3 or use vcpkg.")
+    endif()
+
+    message(STATUS "Using SQLite3 from Vcpkg")
+else()
+    message(STATUS "Using System SQLite3")
+endif()
 
 # Test suite dependencies
 if (BUILD_TESTS)
@@ -55,10 +67,15 @@ endif(BUILD_EXAMPLES)
 configure_file(src/docudb_version.h.in src/docudb_version.h @ONLY)
 
 # Add the library
-add_library(docudb src/docudb.cpp)
+add_library(docudb src/docudb.cpp src/sqlite_extensions.cpp)
 target_include_directories(docudb PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_include_directories(docudb PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/src)
-target_link_libraries(docudb PUBLIC unofficial::sqlite3::sqlite3)
+
+if (SQLite3_FOUND)
+    target_link_libraries(docudb PUBLIC SQLite::SQLite3)
+else()
+    target_link_libraries(docudb PUBLIC unofficial::sqlite3::sqlite3)
+endif()
 
 if (BUILD_TESTS)
     include(CTest)

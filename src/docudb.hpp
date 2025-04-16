@@ -13,6 +13,10 @@
 #include <memory>
 #include <format>
 
+// sqlite3 forward declarations
+struct sqlite3;
+struct sqlite3_stmt;
+
 namespace docudb
 {
     /**
@@ -25,6 +29,48 @@ namespace docudb
         std::int64_t,
         std::nullptr_t,
         std::string>;
+
+    namespace details::sqlite { 
+        struct statement
+        {
+            statement(sqlite3 *db_handle, std::string_view query);
+            ~statement();
+            sqlite3_stmt *data() const noexcept;
+            statement &bind(int index, std::int16_t value);
+            statement &bind(int index, std::int32_t value);
+            statement &bind(int index, std::int64_t value);
+            statement &bind(int index, std::nullptr_t value);
+            statement &bind(int index, std::string_view value);
+            statement &bind(int index, std::double_t value);
+            statement &bind(int index, std::float_t value);
+            statement &step() noexcept;
+            template <typename T>
+            T get(int index) const
+            {
+                static_assert(std::false_type::value, "Unsupported type for get method");
+            }
+
+            int result_code() const noexcept
+            {
+                return rc;
+            }
+
+        private:
+            sqlite3 *db_handle_;
+            sqlite3_stmt *stmt_;
+            int rc;
+        };
+
+        template <>
+        std::string statement::get(int index) const;
+        template <>
+        std::double_t statement::get(int index) const;
+        template <>
+        std::int64_t statement::get(int index) const;
+        template <>
+        std::int32_t statement::get(int index) const;
+
+    }
 
     namespace query
     {
@@ -121,6 +167,7 @@ namespace docudb
         };
 
         extern thread_local int bind_counter;
+        const int MAX_VAR_NUM = 250000;
 
         /**
          * \brief Represents a binary operation for querying.
@@ -130,7 +177,7 @@ namespace docudb
             explicit binary_op(
                 std::string const &json_query,
                 std::string const &op,
-                db_value &&value) : var_(json_query), op_(op), index_(++bind_counter)
+                db_value &&value) : var_(json_query), op_(op), index_(1 + (++bind_counter % MAX_VAR_NUM))
             {
                 binder_.add(index_, std::move(value));
             }
@@ -170,6 +217,16 @@ namespace docudb
                 std::string const &name,
                 std::string const &val) : binary_op(name, "LIKE", val) {}
         };
+
+        /**
+         * \brief Represents a REGEXP operation for querying.
+         */
+        struct regexp : binary_op
+        {
+            explicit regexp(
+                std::string const &name,
+                std::string const &val) : binary_op(name, "REGEXP", val) {}
+        };        
 
         /**
          * \brief Represents an EQUAL operation for querying.
@@ -328,6 +385,20 @@ namespace docudb
          */
         db_exception(sqlite3 *db_handle, std::string_view msg);
     };
+
+    /**
+     * \brief Exception class for database errors.
+     */
+    struct stmt_exception : db_exception
+    {
+        /**
+         * \brief Constructs a new db_exception object.
+         *
+         * \param db_handle The SQLite database handle.
+         * \param msg The failing statement.
+         */
+        stmt_exception(sqlite3 *db_handle, std::string_view sql);
+    };    
 
     struct db_document;
 
@@ -497,6 +568,30 @@ namespace docudb
         // get real
         std::double_t get_real(std::string_view query) const;
 
+        // get array length
+        std::size_t get_array_length(std::string_view query) const;
+
+        // get values
+        template <typename... Types>
+        std::tuple<Types...> get(const std::vector<std::string>& fields) const {
+            if (fields.size() != sizeof...(Types)) {
+                throw std::invalid_argument("Number of fields does not match the number of types.");
+            }
+
+            auto stmt = get_value_stmt_impl(fields);
+            auto ret = get_values_impl<Types...>(stmt, std::index_sequence_for<Types...>{});
+
+            return ret;
+        }        
+    private:
+        template <typename... Types, std::size_t... Indices>
+        std::tuple<Types...> get_values_impl(details::sqlite::statement const &stmt, std::index_sequence<Indices...>) const
+        {
+            return std::make_tuple(stmt.get<Types>(Indices)...);
+        }   
+        
+        details::sqlite::statement get_value_stmt_impl(const std::vector<std::string>& fields) const;
+
     private:
         std::string doc_id;
         std::string table_name;
@@ -515,6 +610,7 @@ namespace docudb
          * \param db_handle The SQLite database handle.
          */
         db_document(std::string_view table_name, std::string_view doc_id, std::string_view body, sqlite3 *db_handle);
+        db_document(std::string_view table, std::string_view doc_id, sqlite3 *db_handle);
     };
 
     /**
@@ -546,18 +642,40 @@ namespace docudb
         db_document doc(std::string_view doc_id) const;
 
         /**
-         * \brief Creates a new document.
+         * \brief Creates a new document with a generated UUID.
          *
          * \returns db_document The new document object.
          */
         db_document doc();
 
         /**
+         * \brief Creates a new document with the given ID.
+         *
+         * \returns db_document The new document object.
+         */        
+        db_document create(std::string_view doc_id);
+
+        /**
+         * \brief Gets the number of documents in the collection.
+         *
+         * \returns std::size_t The number of documents in the collection.
+         */        
+        std::size_t count() const;
+
+        /**
+         * \brief Gets the number of documents that matches the given query.
+         *
+         * \param q The query object.
+         * \returns std::size_t The number of matching documents.
+         */        
+        std::size_t count(query::queryable_type_eraser q) const;        
+
+        /**
          * \brief Gets all documents in the collection.
          *
          * \returns std::vector<db_document_ref> The list of document references.
          */
-        std::vector<db_document_ref> docs();
+        std::vector<db_document_ref> docs() const;
 
         /**
          * \brief Removes a document by ID.
@@ -567,13 +685,14 @@ namespace docudb
         void remove(std::string_view doc_id);
 
         /**
-         * \brief Searches documents by a LIKE query.
+         * \brief Searches documents by query.
          *
-         * \param query The query string.
-         * \param value The LIKE operation value.
+         * \param q The query object.
+         * \param order_by The order by string (SQL) (optional)
+         * \param limit The maximum number of documents to return (optional).
          * \returns std::vector<db_document_ref> The list of document references.
          */
-        std::vector<db_document_ref> find(query::queryable_type_eraser q) const;
+        std::vector<db_document_ref> find(query::queryable_type_eraser q, std::optional<std::string> order_by = std::nullopt, std::optional<int> limit = std::nullopt) const;
 
         /**
          * \brief Indexes the document based on the specified column and query.
@@ -586,8 +705,22 @@ namespace docudb
          * \param unique The index should be unique
          * \return A reference to the document.
          */
-        db_collection &index(std::string_view column_name, std::string_view query, bool unique = false);
+        db_collection& index(std::string_view column_name, std::string_view query, bool unique = false);
 
+        /**
+         * \brief Indexes the document based on the specified columns and query.
+         *
+         * This function creates a new virtual column representing the given json query
+         * and add an index to that column.
+         * \param name The index name
+         * \param columns A vector of pairs [column_name, query]
+         * \param unique The index should be unique
+         * \return A reference to the document.
+         */        
+        db_collection& index(
+            std::string name,
+            std::vector<std::pair<std::string, std::string>> const &columns,
+            bool unique);   
     private:
         sqlite3 *db_handle;
         std::string table_name;
@@ -624,6 +757,12 @@ namespace docudb
          * \returns std::vector<db_collection> The collection list.
          */
         std::vector<db_collection> collections() const;
+
+        /**
+         * \brief Load docudb's sqlite3 extensions (e.g. regexp)
+         *
+         */
+        void load_extensions() const;
 
     private:
         sqlite3 *db_handle;
