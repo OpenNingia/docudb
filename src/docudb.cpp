@@ -6,7 +6,7 @@
 #include <format>
 #include <thread>
 #include <algorithm>
-#include <iostream>
+#include <utility>
 #include <sstream>
 #include "sqlite_extensions.h"
 #include "docudb_version.h"
@@ -156,6 +156,30 @@ namespace docudb
                 return sqlite3_column_int(stmt_, index);
             }
 
+            template <>
+            std::int16_t statement::get(int index) const
+            {
+                return sqlite3_column_int(stmt_, index);
+            }  
+            
+            template <>
+            std::uint64_t statement::get(int index) const
+            {
+                return sqlite3_column_int64(stmt_, index);
+            }
+
+            template <>
+            std::uint32_t statement::get(int index) const
+            {
+                return sqlite3_column_int64(stmt_, index);
+            }
+
+            template <>
+            std::uint16_t statement::get(int index) const
+            {
+                return sqlite3_column_int(stmt_, index);
+            }  
+
             struct transaction
             {
                 transaction(sqlite3 *db_handle) : db_handle_(db_handle)
@@ -163,7 +187,7 @@ namespace docudb
                     auto ret = sqlite3_exec(db_handle_, "BEGIN TRANSACTION;", nullptr, nullptr, nullptr);
                     if (ret != SQLITE_OK)
                     {
-                        std::cerr << "sqlite3_exec: " << ret << std::endl;
+                        // std::cerr << "sqlite3_exec: " << ret << std::endl;
                         throw db_exception{db_handle_, "Failed to begin transaction"};
                     }
                 }
@@ -173,7 +197,7 @@ namespace docudb
                     auto ret = sqlite3_exec(db_handle_, "COMMIT;", nullptr, nullptr, nullptr);
                     if (ret != SQLITE_OK)
                     {
-                        std::cerr << "sqlite3_exec: " << ret << std::endl;
+                        // std::cerr << "sqlite3_exec: " << ret << std::endl;
                         throw db_exception{db_handle_, "Failed to commit transaction"};
                     }
                     db_handle_ = nullptr; // Prevent rollback in destructor
@@ -241,7 +265,7 @@ namespace docudb
     }
 
     db_exception::db_exception(sqlite3 *db_handle, std::string_view msg) : std::runtime_error(std::string(msg) + ": " + sqlite3_errmsg(db_handle)) {}
-    stmt_exception::stmt_exception(sqlite3 *db_handle, std::string_view sql) 
+    stmt_exception::stmt_exception(sqlite3 *db_handle, std::string_view sql)
         : db_exception(db_handle, std::format("Failed to prepare statement: `{}", sql)) {}
 
     database::database(std::string_view path) : db_handle(nullptr)
@@ -256,6 +280,15 @@ namespace docudb
         }
         // Store the handle
         db_handle = db;
+    }
+
+    database::database(database&& other) : db_handle(std::exchange(other.db_handle, nullptr)) {}
+    database& database::operator=(database&& other) {
+        if (this != &other)
+        {
+            db_handle = std::exchange(other.db_handle, nullptr);
+        }
+        return *this;
     }
 
     database::~database()
@@ -353,6 +386,66 @@ namespace docudb
             nullptr,              // No final function (not aggregate)
             nullptr               // No destroy function
         );
+    }
+
+    void database::backup_to(database &dest, std::function<void(int, int)> progress) const
+    {
+        const auto PAGES_PER_STEP = 1000;
+        auto bak = sqlite3_backup_init(dest.db_handle, "main", db_handle, "main");
+        if (bak)
+        {
+            auto pagecount = 0;
+            auto remaining = 1;  
+
+            while (true)
+            {
+                auto pages = std::min(PAGES_PER_STEP, remaining);
+                sqlite3_backup_step(bak, pages);
+
+                pagecount = sqlite3_backup_pagecount(bak);
+                remaining = sqlite3_backup_remaining(bak);
+
+                progress(remaining, pagecount);
+
+                if (remaining <= 0)
+                {
+                    break;
+                }
+            }
+
+            sqlite3_backup_finish(bak);
+        }
+
+        auto rc = sqlite3_errcode(dest.db_handle);
+        if (rc != SQLITE_OK)
+            throw db_exception{dest.db_handle, "Backup failed"};
+    }
+
+    std::string database::filename_database() const noexcept
+    {
+        auto f = sqlite3_db_filename(db_handle, "main");
+        auto r = sqlite3_filename_database(f);
+        if (r)
+            return r;
+        return {};
+    }
+
+    std::string database::filename_journal() const noexcept
+    {
+        auto f = sqlite3_db_filename(db_handle, "main");
+        auto r = sqlite3_filename_journal(f);
+        if (r)
+            return r;
+        return {};
+    }
+
+    std::string database::filename_wal() const noexcept
+    {
+        auto f = sqlite3_db_filename(db_handle, "main");
+        auto r = sqlite3_filename_wal(f);
+        if (r)
+            return r;
+        return {};
     }
 
     std::string read_doc_body(sqlite3 *db_handle, std::string_view table_name, std::string_view doc_id)
@@ -925,6 +1018,36 @@ namespace docudb
         }
 
         return stmt.get<std::int32_t>(0);
+    }
+
+    std::vector<std::string> db_document::get_object_keys(std::string_view query) const
+    {
+        auto enum_query = std::format("SELECT DISTINCT json_each.key FROM [{}], json_each(body, ?1) WHERE docid=?2;", table_name);
+        details::sqlite::statement stmt{db_handle, enum_query};
+
+        stmt
+            .bind(1, query)
+            .bind(2, doc_id);
+
+        std::vector<std::string> ret;
+        do
+        {
+            stmt.step();
+            if (stmt.result_code() == SQLITE_ERROR)
+            {
+                throw db_exception{db_handle, "Failed to enumerate keys"};
+            }
+            else if (stmt.result_code() != SQLITE_ROW)
+            {
+                break;
+            }
+            else
+            {
+                ret.push_back(stmt.get<std::string>(0));
+            }
+        } while (true);
+
+        return ret;     
     }
 
     // DOCUMENT_REF

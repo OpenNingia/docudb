@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <stdexcept>
+#include <functional>
 
 #include <sqlite3.h>
 #include <cstdint>
@@ -38,7 +39,7 @@ namespace docudb
             sqlite3_stmt *data() const noexcept;
             statement &bind(int index, std::int16_t value);
             statement &bind(int index, std::int32_t value);
-            statement &bind(int index, std::int64_t value);
+            statement &bind(int index, std::int64_t value);           
             statement &bind(int index, std::nullptr_t value);
             statement &bind(int index, std::string_view value);
             statement &bind(int index, std::double_t value);
@@ -69,7 +70,14 @@ namespace docudb
         std::int64_t statement::get(int index) const;
         template <>
         std::int32_t statement::get(int index) const;
-
+        template <>
+        std::int16_t statement::get(int index) const;        
+        template <>
+        std::uint64_t statement::get(int index) const;
+        template <>
+        std::uint32_t statement::get(int index) const;        
+        template <>
+        std::uint16_t statement::get(int index) const;   
     }
 
     namespace query
@@ -571,6 +579,9 @@ namespace docudb
         // get array length
         std::size_t get_array_length(std::string_view query) const;
 
+        // get object keys
+        std::vector<std::string> get_object_keys(std::string_view query) const;
+
         // get values
         template <typename... Types>
         std::tuple<Types...> get(const std::vector<std::string>& fields) const {
@@ -618,6 +629,16 @@ namespace docudb
      */
     struct db_collection
     {
+        /**
+         * \brief Constructs an empty db_collection object.
+         *
+         */
+        db_collection() = default;
+        db_collection(db_collection const &) = delete;
+        db_collection &operator=(db_collection const &) = delete;
+        db_collection(db_collection &&) = default;
+        db_collection &operator=(db_collection &&) = default;
+
         /**
          * \brief Constructs a new db_collection object.
          *
@@ -732,11 +753,22 @@ namespace docudb
     struct database
     {
         /**
+         * \brief Constructs an empty database object.
+         *
+         */
+        database() = default;
+        database(database const &) = delete;
+        database &operator=(database const &) = delete;
+
+        database(database &&);
+        database &operator=(database &&);
+
+        /**
          * \brief Constructs a new database object.
          *
-         * \param path The path to the database file.
+         * \param connection_string A valid connection string to the database (e.g. the database file path or :memory:).
          */
-        explicit database(std::string_view path);
+        explicit database(std::string_view connection_string);
 
         /**
          * \brief Destroys the database object.
@@ -763,6 +795,32 @@ namespace docudb
          *
          */
         void load_extensions() const;
+
+        /**
+         * \brief Backup the current database into the destination database
+         *
+         * \param name The destination database.
+         * \param progress Progress callback void progress(int remaining, int total) { ... }
+         */        
+        void backup_to(database& dest, std::function<void(int, int)> progress = [](int, int){}) const;
+
+        /**
+         * \brief Returns the database file name
+         *
+         */
+        std::string filename_database() const noexcept;
+
+        /**
+         * \brief Returns the database journal file name
+         *
+         */        
+        std::string filename_journal() const noexcept;
+
+        /**
+         * \brief Returns the database write-ahead log file name
+         *
+         */        
+        std::string filename_wal() const noexcept;
 
     private:
         sqlite3 *db_handle;
