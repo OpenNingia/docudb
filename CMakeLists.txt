@@ -84,6 +84,30 @@ if (BUILD_TESTS)
     add_executable(docudb_test doctest/tests.cpp)
     target_link_libraries(docudb_test PRIVATE docudb doctest::doctest)
     doctest_discover_tests(docudb_test)
+
+    # Enable code coverage if supported
+    option(ENABLE_COVERAGE "Enable code coverage reporting" ON)
+    if(ENABLE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        message(STATUS "Code coverage enabled")
+        target_compile_options(docudb PUBLIC --coverage)
+        target_link_options(docudb PUBLIC --coverage)
+
+        # Add custom target for lcov coverage report
+        find_program(LCOV_EXEC lcov)
+        find_program(GENHTML_EXEC genhtml)
+        if(LCOV_EXEC AND GENHTML_EXEC)
+            add_custom_target(coverage
+                COMMAND ${LCOV_EXEC} --directory . --capture --output-file coverage.info
+                COMMAND ${LCOV_EXEC} --remove coverage.info '/usr/*' '*/doctest/*' --output-file coverage.info.cleaned
+                COMMAND ${GENHTML_EXEC} -o coverage_html coverage.info.cleaned
+                COMMENT "Generating lcov coverage report in coverage_html/"
+                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+                DEPENDS docudb_test
+            )
+        else()
+            message(WARNING "lcov/genhtml not found: coverage target will not be available")
+        endif()        
+    endif()    
 endif()
 
 if (BUILD_BENCH)

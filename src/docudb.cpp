@@ -180,6 +180,30 @@ namespace docudb
                 return sqlite3_column_int(stmt_, index);
             }  
 
+            json_type statement::get_type(int index) const noexcept
+            {
+                switch(sqlite3_column_type(stmt_, index)) {
+                    case SQLITE_INTEGER:
+                        return json_type::integer;
+                    case SQLITE_FLOAT:
+                        return json_type::real;
+                    case SQLITE_TEXT:
+                        return json_type::string;
+                    case SQLITE_BLOB:
+                        return json_type::string; // treat blob as string
+                    case SQLITE_NULL:
+                    default:
+                        return json_type::null;
+                }
+            }
+
+            bool statement::is_result_null(int index) const noexcept
+            {
+                auto strval = sqlite3_column_text(stmt_, index);
+                auto blobval = sqlite3_column_blob(stmt_, index);
+                return nullptr == sqlite3_column_blob(stmt_, index);
+            }
+
             struct transaction
             {
                 transaction(sqlite3 *db_handle) : db_handle_(db_handle)
@@ -530,7 +554,7 @@ namespace docudb
         for (const auto &[key, value] : binder.get_parameters())
         {
             std::visit([&](auto &&val)
-                       { stmt.bind(key, val); }, value);
+                        { stmt.bind(key, val); }, value);
         }
 
         stmt.step();
@@ -570,11 +594,28 @@ namespace docudb
         return refs;
     }
 
-    std::vector<db_document_ref> db_collection::find(query::queryable_type_eraser q, std::optional<std::string> order_by, std::optional<int> limit) const
+    std::vector<db_document_ref> db_collection::find(query::queryable_type_eraser q, std::optional<query::order_by> order_by, std::optional<int> limit) const
     {
-        auto query_string = std::format("SELECT docid FROM [{}] WHERE {}", table_name, q.to_query_string());
+        std::vector<std::string> select_fields = {"docid"};
+        if (order_by) {
+            auto json_query = order_by->field().size() > 0 && order_by->field().at(0) == '$';
+            if (json_query) {
+                select_fields.push_back(std::format("json_extract(body, '{}') AS __order_by", order_by->field()));
+            } else {
+                select_fields.push_back(std::format("{} AS __order_by", order_by->field()));
+            }
+        }
+
+        auto select_fields_str = std::accumulate(
+            std::next(select_fields.begin()), select_fields.end(), select_fields[0],
+            [](std::string const &a, std::string const &b)
+            {
+                return a + "," + b;
+            });
+
+        auto query_string = std::format("SELECT {} FROM [{}] WHERE {}", select_fields_str, table_name, q.to_query_string());
         if (order_by)
-            query_string += std::format(" ORDER BY {}", *order_by);
+            query_string += std::format(" ORDER BY __order_by {}", order_by->direction());
         if (limit)
             query_string += std::format(" LIMIT {}", *limit);
 
@@ -585,7 +626,7 @@ namespace docudb
         for (const auto &[key, value] : binder.get_parameters())
         {
             std::visit([&](auto &&val)
-                       { stmt.bind(key, val); }, value);
+                        { stmt.bind(key, val); }, value);
         }
         std::vector<db_document_ref> refs;
         do
@@ -699,6 +740,21 @@ namespace docudb
 
         return *this;
     }
+
+    void db_collection::remove(std::string_view doc_id)
+    {
+        auto delete_doc_query = std::format("DELETE FROM [{}] WHERE docid=?1;", table_name);
+        details::sqlite::statement stmt{db_handle, delete_doc_query};
+
+        stmt
+            .bind(1, doc_id)
+            .step();
+
+        if (stmt.result_code() != SQLITE_DONE)
+        {
+            throw db_exception{db_handle, "Failed to delete document"};
+        }
+    }    
 
     // DOCUMENT
 
@@ -927,10 +983,16 @@ namespace docudb
         return *this;
     }
 
+    // remove
+    void db_document::erase()
+    {
+        return db_collection{table_name, db_handle}.remove(doc_id);
+    }     
+
     template <class R>
     R get_value_impl(sqlite3 *db_handle, std::string_view table_name, std::string const &doc_id, std::string_view query)
     {
-        auto get_doc_query = std::format("SELECT json_extract(body, ?1) FROM [{}] WHERE docid=?2;", table_name);
+        auto get_doc_query = std::format("SELECT json_extract(body, ?1) FROM [{}] WHERE docid=?2 AND json_type(body, ?1) IS NOT NULL;", table_name);
         details::sqlite::statement stmt{db_handle, get_doc_query};
 
         stmt
@@ -940,7 +1002,7 @@ namespace docudb
 
         if (stmt.result_code() != SQLITE_ROW)
         {
-            throw db_exception{db_handle, "Document not found"};
+            throw db_exception{db_handle, "Document or field not found"};
         }
 
         return stmt.get<R>(0);
@@ -1001,10 +1063,52 @@ namespace docudb
         return get_value_impl<std::double_t>(db_handle, table_name, doc_id, query);
     }
 
+    // get type
+    docudb::json_type db_document::get_type(std::string_view query) const
+    {
+        std::string get_type_query = std::format(
+            "SELECT json_type(body, ?1) FROM [{}] WHERE docid = ?2",
+            table_name
+        );
+
+        details::sqlite::statement stmt{db_handle, get_type_query};
+
+        stmt
+            .bind(1, query)
+            .bind(2, doc_id)
+            .step();
+
+        docudb::json_type result = docudb::json_type::not_found;
+        if (stmt.result_code() == SQLITE_ROW) {
+            if (stmt.is_result_null(0)) {
+                return docudb::json_type::not_found;
+            }
+            auto type = stmt.get<std::string>(0);
+            if ("null"sv == type) {
+                result = docudb::json_type::null;
+            } else if ("integer"sv == type) {
+                result = docudb::json_type::integer;
+            } else if ("real"sv == type) {
+                result = docudb::json_type::real;
+            } else if ("text"sv == type) {
+                result = docudb::json_type::string;
+            } else if ("object"sv == type) {
+                result = docudb::json_type::object;
+            } else if ("array"sv == type) {
+                result = docudb::json_type::array;
+            } else if ("true"sv == type) {
+                result = docudb::json_type::boolean_true;
+            } else if ("false"sv == type) {
+                result = docudb::json_type::boolean_false;
+            }
+        }
+        return result;
+    }    
+
     // get array length
     std::size_t db_document::get_array_length(std::string_view query) const
     {
-        auto get_doc_query = std::format("SELECT json_array_length(body, ?1) FROM [{}] WHERE docid=?2;", table_name);
+        auto get_doc_query = std::format("SELECT json_array_length(body, ?1) FROM [{}] WHERE docid=?2 AND json_type(body, ?1) = 'array';", table_name);
         details::sqlite::statement stmt{db_handle, get_doc_query};
 
         stmt
@@ -1014,7 +1118,7 @@ namespace docudb
 
         if (stmt.result_code() != SQLITE_ROW)
         {
-            throw db_exception{db_handle, "Document not found"};
+            throw db_exception{db_handle, "Document or array not found"};
         }
 
         return stmt.get<std::int32_t>(0);
@@ -1064,4 +1168,9 @@ namespace docudb
     {
         return db_collection{table_name, db_handle}.doc(doc_id);
     }
+
+    void db_document_ref::erase()
+    {
+        return db_collection{table_name, db_handle}.remove(doc_id);
+    }    
 }

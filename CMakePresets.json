@@ -2,7 +2,7 @@
   "version": 2,
   "configurePresets": [
     {
-      "name": "default_multiconfig",
+      "name": "vcpkg_multiconfig_default",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {
@@ -11,7 +11,17 @@
       }
     },
     {
-      "name": "g++13_multiconfig",
+      "name": "vcpkg_multiconfig_with_tests",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "1",
+        "BUILD_TESTS": "ON"
+      }
+    },    
+    {
+      "name": "vcpkg_g++13_multiconfig",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",
       "cacheVariables": {

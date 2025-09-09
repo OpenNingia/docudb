@@ -31,7 +31,23 @@ namespace docudb
         std::nullptr_t,
         std::string>;
 
-    namespace details::sqlite { 
+    /**
+     * \brief JSON types.
+     */
+    enum class json_type {
+        null,
+        integer,
+        real,
+        string,
+        object,
+        array,
+        boolean_true,
+        boolean_false,
+        not_found
+    };
+
+    namespace details::sqlite {
+
         struct statement
         {
             statement(sqlite3 *db_handle, std::string_view query);
@@ -50,6 +66,10 @@ namespace docudb
             {
                 static_assert(std::false_type::value, "Unsupported type for get method");
             }
+
+            json_type get_type(int index) const noexcept;
+
+            bool is_result_null(int index) const noexcept;
 
             int result_code() const noexcept
             {
@@ -190,9 +210,27 @@ namespace docudb
                 binder_.add(index_, std::move(value));
             }
 
+            explicit binary_op(
+                std::string const &json_query,
+                std::string const &op,
+                nullptr_t) : var_(json_query), op_(op), index_(-1)
+            {
+
+            }            
+
             std::string to_query_string() const
             {
                 auto json_query = var_.size() > 0 && var_[0] == '$';
+                auto is_value_null = index_ == -1;
+
+                // special case for null value
+                if (is_value_null) {
+                    if (json_query)
+                        return std::format("json_type(body, '{0}') IS NOT NULL AND json_extract(body, '{0}') {1} NULL", var_, op_);
+                    else
+                        return std::format("[{}] {} NULL", var_, op_);                    
+                }
+
                 if (json_query)
                     return std::format("(json_extract(body, '{}') {} ?{})", var_, op_, index_);
                 else
@@ -244,6 +282,10 @@ namespace docudb
             explicit eq(
                 std::string const &name,
                 db_value &&val) : binary_op(name, "=", std::move(val)) {}
+
+            explicit eq(
+                std::string const &name,
+                nullptr_t) : binary_op(name, "IS", nullptr) {}
         };
 
         /**
@@ -254,6 +296,10 @@ namespace docudb
             explicit neq(
                 std::string const &name,
                 db_value &&val) : binary_op(name, "!=", std::move(val)) {}
+
+            explicit neq(
+                std::string const &name,
+                nullptr_t) : binary_op(name, "IS NOT", nullptr) {}                
         };
 
         /**
@@ -364,6 +410,19 @@ namespace docudb
         private:
             std::unique_ptr<queryable_base> ptr_;
         };
+
+        struct order_by
+        {
+            explicit order_by(std::string const &field, bool ascending = true)
+                : field_(field), ascending_(ascending) {}
+
+            std::string const& field() const { return field_; }
+            std::string_view direction() const { return ascending_ ? "ASC" : "DESC"; }
+
+            private:
+                std::string field_;
+                bool ascending_;
+        };
     }
 
     /**
@@ -444,6 +503,12 @@ namespace docudb
          * \returns db_document The document object.
          */
         db_document doc() const;
+
+        /**
+         * \brief Removes the document from the collection.
+         * \returns void
+         */        
+        void erase();        
 
     private:
         sqlite3 *db_handle;
@@ -576,6 +641,9 @@ namespace docudb
         // get real
         std::double_t get_real(std::string_view query) const;
 
+        // get json type
+        json_type get_type(std::string_view query) const;
+
         // get array length
         std::size_t get_array_length(std::string_view query) const;
 
@@ -593,7 +661,13 @@ namespace docudb
             auto ret = get_values_impl<Types...>(stmt, std::index_sequence_for<Types...>{});
 
             return ret;
-        }        
+        }
+        
+        /**
+         * \brief Removes the document from the collection.
+         * \returns void
+         */        
+        void erase();
     private:
         template <typename... Types, std::size_t... Indices>
         std::tuple<Types...> get_values_impl(details::sqlite::statement const &stmt, std::index_sequence<Indices...>) const
@@ -709,11 +783,11 @@ namespace docudb
          * \brief Searches documents by query.
          *
          * \param q The query object.
-         * \param order_by The order by string (SQL) (optional)
+         * \param order_by The order by object (optional)
          * \param limit The maximum number of documents to return (optional).
          * \returns std::vector<db_document_ref> The list of document references.
          */
-        std::vector<db_document_ref> find(query::queryable_type_eraser q, std::optional<std::string> order_by = std::nullopt, std::optional<int> limit = std::nullopt) const;
+        std::vector<db_document_ref> find(query::queryable_type_eraser q, std::optional<query::order_by> order_by = std::nullopt, std::optional<int> limit = std::nullopt) const;
 
         /**
          * \brief Indexes the document based on the specified column and query.
