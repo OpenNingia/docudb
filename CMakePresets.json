@@ -2,6 +2,23 @@
   "version": 2,
   "configurePresets": [
     {
+      "name": "multiconfig_default",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "1"
+      }
+    },  
+    {
+      "name": "multiconfig_with_tests",
+      "generator": "Ninja Multi-Config",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "1",
+        "BUILD_TESTS": "ON"
+      }
+    },        
+    {
       "name": "vcpkg_multiconfig_default",
       "generator": "Ninja Multi-Config",
       "binaryDir": "${sourceDir}/build",

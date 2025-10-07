@@ -306,6 +306,53 @@ namespace docudb
         db_handle = db;
     }
 
+    database::database(std::string_view path, open_mode mode, threading_mode thread_mode)
+        : db_handle(nullptr)
+    {
+        int flags = 0;
+
+        // Set the open mode flags
+        switch (mode)
+        {
+        case open_mode::read_only:
+            flags |= SQLITE_OPEN_READONLY;
+            break;
+        case open_mode::read_write:
+            flags |= SQLITE_OPEN_READWRITE;
+            break;
+        case open_mode::read_write_create:
+            flags |= SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
+            break;
+        }
+
+        // Set the threading mode flags
+        switch (thread_mode)
+        {
+        case threading_mode::default_mode:
+            // No flags are added; uses the compile-time or process-start default.
+            break;
+        case threading_mode::multi_thread:
+            flags |= SQLITE_OPEN_NOMUTEX;
+            break;
+        case threading_mode::serialized:
+            flags |= SQLITE_OPEN_FULLMUTEX;
+            break;
+        }
+
+        sqlite3* db;
+        // Use path.data() for compatibility with C-style string APIs
+        int rc = sqlite3_open_v2(path.data(), &db, flags, nullptr);
+
+        if (rc != SQLITE_OK)
+        {
+            sqlite3_close(db);
+            throw db_exception{db_handle, "Can't open database"};
+        }
+
+        // Store the handle
+        db_handle = db;
+    }    
+
     database::database(database&& other) : db_handle(std::exchange(other.db_handle, nullptr)) {}
     database& database::operator=(database&& other) {
         if (this != &other)

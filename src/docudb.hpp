@@ -46,6 +46,46 @@ namespace docudb
         not_found
     };
 
+    /**
+     * \brief Specifies the database file open mode.
+     */
+    enum class open_mode {
+        /**
+         * \brief Open the database for read-only access. The database must already exist.
+         */
+        read_only,
+        /**
+         * \brief Open the database for reading and writing. The database must already exist.
+         */
+        read_write,
+        /**
+         * \brief Open the database for reading and writing, and create it if it does not exist.
+         */
+        read_write_create
+    };
+
+    /**
+     * \brief Specifies the threading mode for the database connection.
+     * \note The threading mode specified by these flags overrides the compile-time default.
+     *       Refer to SQLite's documentation on sqlite3_open_v2 for details.
+     */
+    enum class threading_mode {
+        /**
+         * \brief Use the default threading mode. If you need single-thread mode, SQLite
+         *        must be compiled accordingly. This option adds no specific threading flags.
+         */
+        default_mode,
+        /**
+         * \brief The new database connection will use the multi-thread threading mode.
+         */
+        multi_thread,
+        /**
+         * \brief The new database connection will use the serialized threading mode.
+         */
+        serialized
+    };
+
+
     namespace details::sqlite {
 
         struct statement
@@ -843,6 +883,18 @@ namespace docudb
          * \param connection_string A valid connection string to the database (e.g. the database file path or :memory:).
          */
         explicit database(std::string_view connection_string);
+
+        /**
+         * \brief Constructs a new database object.
+         *
+         * \param connection_string A valid connection string to the database (e.g. the database file path or :memory:).
+         * \param mode The mode for opening the database file.
+         * \param thread_mode The threading model for the connection.
+         */
+        explicit database(
+            std::string_view connection_string,
+            open_mode mode,
+            threading_mode thread_mode);
 
         /**
          * \brief Destroys the database object.
