@@ -135,8 +135,6 @@ std::optional<docudb::db_document_ref> get_ref() {
 
 The library generates UUIDs for new documents using `std::mt19937`, which is **not cryptographically secure**. Do not rely on these UUIDs in security-sensitive contexts where guessability is a concern. If you need secure random identifiers, generate them using a dedicated cryptography library and provide them when creating documents.
 
-Of course. Here is a new "Usage" section for your `README.md` file that explains how to use the new database connection options. You can add this to your main usage or features section.
-
 ## Advanced Usage
 
 ### Connecting to a Database
